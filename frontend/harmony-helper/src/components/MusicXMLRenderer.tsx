@@ -94,8 +94,14 @@ const MusicXMLRenderer = ({
       {/* OSMD renders into this div */}
       <div
         ref={containerRef}
-        className="w-full overflow-auto [&_svg]:max-w-full"
-        style={{ minHeight: "300px" }}
+        className="
+          w-full overflow-auto
+          [&_svg]:max-w-full
+          [&_svg_*]:fill-zinc-200
+          [&_svg_*]:stroke-zinc-200
+          [&_svg]:bg-transparent
+        "
+        style={{ minHeight: '300px' }}
       />
     </div>
   );

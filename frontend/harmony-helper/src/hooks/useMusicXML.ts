@@ -51,6 +51,8 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
       await osmd.load(xml);
       osmd.render();
       osmd.cursor.show();
+
+      
       osmdRef.current = osmd;
       setIsLoaded(true);
     } catch (err) {
