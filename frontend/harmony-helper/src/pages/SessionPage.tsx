@@ -1,26 +1,38 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Music } from "lucide-react";
+import { ArrowLeft, Music, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import FileUpload from "@/components/FileUpload";
 import MusicXMLRenderer from "@/components/MusicXMLRenderer";
 import RecordingBar from "@/components/RecordingBar";
+import { useSessionStore } from "@/store/useSessionStore";
+import { audioService } from "@/services/audio";
+import { api } from "@/services/api";
+import { toast } from "sonner";
+import { AnalysisResponse } from "@/types";
 
-/**
- * Session Page — Full-screen MusicXML practice session.
- *
- * Flow:
- * 1. Upload a MusicXML file
- * 2. Sheet renders as the main content
- * 3. Start recording → sheet auto-scrolls with cursor at BPM
- * 4. Stop recording → post-recording actions (Rerecord / AI Feedback)
- *
- * TODO: Implement actual audio recording via Web Audio API / MediaRecorder.
- * TODO: Send recorded audio to AI analysis backend.
- */
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
 const SessionPage = () => {
   const navigate = useNavigate();
+  const {
+    startNewSession,
+    setRecordingBlob,
+    currentSession,
+    setAnalysisResults,
+    setRecordingStatus,
+    setAnalyzingStatus,
+    isAnalyzing
+  } = useSessionStore();
+
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [xmlContent, setXmlContent] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -32,8 +44,12 @@ const SessionPage = () => {
     setUploadedFile(file);
     setXmlContent(xml);
     setHasFinished(false);
+
+    // Initialize session in store
+    startNewSession(xml, file.name.replace(/\.[^/.]+$/, ""), "Piano"); // Default instrument for now
+
     console.log("MusicXML uploaded:", file.name);
-  }, []);
+  }, [startNewSession]);
 
   const handleClearFile = useCallback(() => {
     setUploadedFile(null);
@@ -43,37 +59,54 @@ const SessionPage = () => {
     setHasFinished(false);
   }, []);
 
-  const handleStartRecording = useCallback(() => {
-    // TODO: Implement actual audio recording via MediaRecorder
-    console.log("Recording started at", bpm, "BPM");
-    setIsRecording(true);
-    setIsPaused(false);
-    setHasFinished(false);
-  }, [bpm]);
+  const handleStartRecording = useCallback(async () => {
+    try {
+      await audioService.start();
+      console.log("Recording started at", bpm, "BPM");
+      setIsRecording(true);
+      setRecordingStatus(true);
+      setIsPaused(false);
+      setHasFinished(false);
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      toast.error("Could not start recording. Check permissions.");
+    }
+  }, [bpm, setRecordingStatus]);
 
-  const handleStopRecording = useCallback(() => {
-    // TODO: Save recorded audio blob
-    console.log("Recording stopped");
-    setIsRecording(false);
-    setIsPaused(false);
-    setHasFinished(true);
-  }, []);
+  const handleStopRecording = useCallback(async () => {
+    try {
+      const blob = await audioService.stop();
+      console.log("Recording stopped, blob size:", blob.size);
+      setRecordingBlob(blob);
+
+      setIsRecording(false);
+      setRecordingStatus(false);
+      setIsPaused(false);
+      setHasFinished(true);
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      toast.error("Failed to save recording.");
+    }
+  }, [setRecordingBlob, setRecordingStatus]);
 
   const handlePause = useCallback(() => {
+    audioService.pause();
     console.log("Recording paused");
     setIsPaused(true);
   }, []);
 
   const handleResume = useCallback(() => {
+    audioService.resume();
     console.log("Recording resumed");
     setIsPaused(false);
   }, []);
 
   const handlePlaybackEnd = useCallback(() => {
-    // Auto-stop when cursor reaches end of sheet
     console.log("Playback reached end of sheet");
-    handleStopRecording();
-  }, [handleStopRecording]);
+    if (isRecording) {
+      handleStopRecording();
+    }
+  }, [isRecording, handleStopRecording]);
 
   const handleRerecord = useCallback(() => {
     setHasFinished(false);
@@ -81,10 +114,38 @@ const SessionPage = () => {
     setIsPaused(false);
   }, []);
 
-  const handleGetFeedback = useCallback(() => {
-    // Navigate to feedback page, passing the XML content
-    navigate("/feedback", { state: { xmlContent } });
-  }, [navigate, xmlContent]);
+  const handleGetFeedback = useCallback(async () => {
+    if (!currentSession?.audioBlob || !currentSession?.xmlContent) {
+      toast.error("No recording found.");
+      return;
+    }
+
+    try {
+      setAnalyzingStatus(true);
+      toast.info("Analyzing performance...");
+
+      const audioBase64 = await blobToBase64(currentSession.audioBlob);
+
+      const payload = {
+        Song_name: currentSession.songName,
+        Instrument: currentSession.instrument,
+        Audio_length: currentSession.durationSeconds || 0, // TODO: track actual duration
+        Recording: audioBase64,
+        Target_XML: currentSession.xmlContent
+      };
+
+      const results = await api.analyze(payload);
+      setAnalysisResults(results);
+
+      toast.success("Analysis complete!");
+      navigate("/feedback");
+    } catch (error) {
+      console.error("Analysis failed:", error);
+      toast.error("Analysis failed. Please try again.");
+    } finally {
+      setAnalyzingStatus(false);
+    }
+  }, [currentSession, navigate, setAnalysisResults, setAnalyzingStatus]);
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-studio">
@@ -108,10 +169,18 @@ const SessionPage = () => {
         </div>
       </header>
 
-      {/* Main content — grows to fill screen */}
-      <main className="flex flex-1 flex-col pb-20">
+      {/* Main content */}
+      <main className="flex flex-1 flex-col pb-20 relative">
+        {isAnalyzing && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <p className="text-lg font-medium text-foreground">Analyzing your performance...</p>
+            </div>
+          </div>
+        )}
+
         {!xmlContent ? (
-          /* Upload step */
           <div className="flex flex-1 items-center justify-center px-4">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -134,13 +203,11 @@ const SessionPage = () => {
             </motion.div>
           </div>
         ) : (
-          /* Sheet music display — full width background */
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-1 flex-col"
           >
-            {/* File info bar */}
             <div className="border-b border-border bg-card/50 px-4 py-2">
               <div className="mx-auto flex max-w-7xl items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -160,7 +227,6 @@ const SessionPage = () => {
               </div>
             </div>
 
-            {/* Sheet music — takes up all available space */}
             <div className="flex-1 overflow-auto bg-card/30 p-4">
               <div className="mx-auto max-w-5xl">
                 <MusicXMLRenderer
@@ -176,7 +242,6 @@ const SessionPage = () => {
         )}
       </main>
 
-      {/* Bottom Recording Bar — always visible when file is uploaded */}
       {xmlContent && (
         <RecordingBar
           isRecording={isRecording}
@@ -187,7 +252,7 @@ const SessionPage = () => {
           onResume={handleResume}
           bpm={bpm}
           onBpmChange={setBpm}
-          disabled={!xmlContent}
+          disabled={!xmlContent || isAnalyzing}
           hasFinished={hasFinished}
           onRerecord={handleRerecord}
           onGetFeedback={handleGetFeedback}

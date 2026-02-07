@@ -3,6 +3,11 @@ import { motion } from "framer-motion";
 import { Music, Mic, FileMusic, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import heroBg from "@/assets/hero-bg.jpg";
+import { useAuth0 } from "@auth0/auth0-react";
+import LoginButton from "@/components/auth/LoginButton";
+import LogoutButton from "@/components/auth/LogoutButton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserStats } from "@/components/UserStats";
 
 const features = [
   {
@@ -24,9 +29,28 @@ const features = [
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated, isLoading } = useAuth0();
 
   return (
     <div className="min-h-screen bg-gradient-studio">
+      {/* Auth Header */}
+      <div className="absolute top-0 right-0 z-50 p-4 flex items-center gap-4">
+        {isAuthenticated && user ? (
+          <div className="flex items-center gap-3 bg-background/20 backdrop-blur-sm p-2 rounded-full border border-white/10">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user.picture} alt={user.name} />
+              <AvatarFallback>{user.name?.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium text-white hidden sm:block">
+              {user.name}
+            </span>
+            <LogoutButton />
+          </div>
+        ) : (
+          !isLoading && <LoginButton />
+        )}
+      </div>
+
       {/* Hero Section */}
       <section className="relative flex min-h-[85vh] flex-col items-center justify-center overflow-hidden px-4">
         {/* Background image with overlay */}
@@ -69,7 +93,7 @@ const HomePage = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="mt-10"
+            className="mt-10 mb-12"
           >
             <Button
               size="lg"
@@ -80,6 +104,8 @@ const HomePage = () => {
               Start Session
             </Button>
           </motion.div>
+
+          {isAuthenticated && <UserStats />}
         </motion.div>
 
         {/* Scroll hint */}

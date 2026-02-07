@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX } from "lucide-react";
+import { Volume2, VolumeX, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { elevenLabsService } from "@/services/elevenlabs";
 
 interface AIAvatarProps {
   /** Text feedback the avatar "speaks" */
@@ -12,33 +13,26 @@ interface AIAvatarProps {
 
 /**
  * AI Avatar component that displays a circular avatar and
- * "speaks" feedback using the Web Speech API (text-to-speech).
- *
- * TODO: Replace with actual AI voice synthesis (e.g., ElevenLabs)
- * when backend integration is ready.
+ * "speaks" feedback using ElevenLabs or Web Speech API fallback.
  */
 const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [displayedText, setDisplayedText] = useState("");
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const charIndexRef = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const speak = () => {
+  const speakWebSpeech = () => {
     if (!("speechSynthesis" in window)) {
-      console.log("TTS not supported — displaying text only.");
       setDisplayedText(feedbackText);
       return;
     }
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(feedbackText);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    utteranceRef.current = utterance;
+    utterance.rate = 1;
 
-    // Animate text reveal in sync with speech
+    // Word-by-word reveal for WebSpeech
     setDisplayedText("");
-    charIndexRef.current = 0;
 
     utterance.onboundary = (event) => {
       if (event.name === "word") {
@@ -51,15 +45,47 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
       setIsSpeaking(false);
       setDisplayedText(feedbackText);
     };
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setDisplayedText(feedbackText);
-    };
+    utterance.onerror = () => setIsSpeaking(false);
 
     window.speechSynthesis.speak(utterance);
   };
 
+  const speak = async () => {
+    // If already speaking, stop
+    if (isSpeaking) {
+      stopSpeaking();
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      // Attempt ElevenLabs
+      const audioUrl = await elevenLabsService.speakText(feedbackText);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onplay = () => setIsSpeaking(true);
+      audio.onended = () => setIsSpeaking(false);
+      audio.onerror = () => {
+        console.error("Audio playback error");
+        setIsSpeaking(false);
+      };
+
+      await audio.play();
+      setDisplayedText(feedbackText); // Show full text immediately for audio
+    } catch (error) {
+      console.warn("ElevenLabs failed, falling back to WebSpeech:", error);
+      speakWebSpeech();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
     setDisplayedText(feedbackText);
@@ -67,11 +93,10 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
 
   useEffect(() => {
     if (autoSpeak && feedbackText) {
-      // Small delay so the page renders first
       const timeout = setTimeout(speak, 800);
       return () => {
         clearTimeout(timeout);
-        window.speechSynthesis.cancel();
+        stopSpeaking();
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,9 +128,12 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={isSpeaking ? stopSpeaking : speak}
+          onClick={speak}
+          disabled={isLoading}
         >
-          {isSpeaking ? (
+          {isLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isSpeaking ? (
             <VolumeX className="h-3.5 w-3.5" />
           ) : (
             <Volume2 className="h-3.5 w-3.5" />
