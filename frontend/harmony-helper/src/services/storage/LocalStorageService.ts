@@ -23,7 +23,7 @@ export class LocalStorageService implements IStorageService {
         }));
     }
 
-    async saveSession(session: SessionData): Promise<void> {
+    async saveSession(session: SessionData): Promise<string | void> {
         // Simulate network delay
         await new Promise(r => setTimeout(r, 500));
 

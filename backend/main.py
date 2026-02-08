@@ -150,10 +150,20 @@ async def save_session(session: SessionBase, auth0_id: str = Depends(get_current
                 
             audio_data = base64.b64decode(encoded)
             filename = f"{user_id}/{datetime.now().timestamp()}.webm"
-            # Actual upload logic would go here
-            audio_url = f"{SUPABASE_URL}/storage/v1/object/public/recordings/{filename}"
+            
+            # Actual upload to Supabase Storage
+            res = supabase.storage.from_("recordings").upload(
+                path=filename,
+                file=audio_data,
+                file_options={"content-type": "audio/webm"}
+            )
+            
+            # Use official method to get public URL
+            audio_url = supabase.storage.from_("recordings").get_public_url(filename)
         except Exception as e:
-            print(f"Audio processing failed: {e}")
+            print(f"Audio processing/upload failed: {e}")
+            import traceback
+            traceback.print_exc()
 
     session_data = {
         "user_id": user_id,
@@ -181,7 +191,7 @@ async def save_session(session: SessionBase, auth0_id: str = Depends(get_current
         print(f"Database error details: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-    return {"status": "success", "streak": new_streak}
+    return {"status": "success", "streak": new_streak, "audio_url": audio_url}
 
 @app.get("/api/sessions")
 async def get_sessions(auth0_id: str = Depends(get_current_user_id)):

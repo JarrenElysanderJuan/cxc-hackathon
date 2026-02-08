@@ -2,6 +2,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect } from "react";
 import { storageService } from "@/services/storage";
+import { useSessionStore } from "@/store/useSessionStore";
 
 export const Auth0TokenSync = () => {
     const { getAccessTokenSilently, user, isAuthenticated } = useAuth0();
@@ -13,6 +14,9 @@ export const Auth0TokenSync = () => {
                     const token = await getAccessTokenSilently();
                     console.log("🔐 [AuthSync] Token retrieved. Setting in Storage Service.");
                     storageService.setToken(token);
+
+                    // Initialize store once token is ready
+                    useSessionStore.getState().init();
 
                     // Sync user profile to backend
                     if (user.sub && user.email) {

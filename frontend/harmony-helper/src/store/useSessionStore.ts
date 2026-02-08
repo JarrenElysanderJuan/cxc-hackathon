@@ -96,16 +96,28 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const { currentSession, history } = get();
         if (!currentSession) return;
 
+        // Keep local ref for identification
+        const sessionId = currentSession.id;
+
         // Optimistic update
         const newHistory = [currentSession, ...history];
         set({ history: newHistory, currentSession: null });
 
         try {
-            await storageService.saveSession(currentSession);
+            const audioUrl = await storageService.saveSession(currentSession);
+
+            // Update the optimistic session with its permanent URL
+            if (audioUrl) {
+                set((state) => ({
+                    history: state.history.map(s => s.id === sessionId ? { ...s, audioUrl } : s)
+                }));
+            }
+
             await get().refreshStats();
         } catch (error) {
             console.error("Failed to save session:", error);
-            // Rollback on error? For now just log.
+            // Rollback optimistic update
+            set({ history });
         }
     },
 

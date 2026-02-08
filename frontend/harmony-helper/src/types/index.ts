@@ -29,6 +29,7 @@ export interface SessionData {
     durationSeconds: number; // Recording duration
     totalPracticeSeconds?: number; // Total time spent on session page
     audioBlob?: Blob;
+    audioUrl?: string;
     xmlContent: string;
     analysis?: AnalysisResponse;
 }

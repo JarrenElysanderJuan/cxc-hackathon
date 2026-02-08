@@ -17,10 +17,6 @@ import { useSessionStore } from "./store/useSessionStore";
 import { useEffect } from "react";
 
 const App = () => {
-  useEffect(() => {
-    useSessionStore.getState().init();
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

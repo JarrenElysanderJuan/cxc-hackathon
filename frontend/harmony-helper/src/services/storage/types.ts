@@ -9,7 +9,7 @@ export interface UserStatsData {
 
 export interface IStorageService {
     // Session Management
-    saveSession(session: SessionData): Promise<void>;
+    saveSession(session: SessionData): Promise<string | void>;
     getSessions(): Promise<SessionData[]>;
     getSessionById(id: string): Promise<SessionData | null>;
     deleteSession(id: string): Promise<void>;

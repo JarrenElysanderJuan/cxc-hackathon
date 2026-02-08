@@ -8,6 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
+import { SessionData } from "@/types";
 
 // Helper to download string as file
 const downloadFile = (filename: string, content: string) => {
@@ -32,9 +40,10 @@ const HistoryPage = () => {
     const navigate = useNavigate();
     const { history, deleteSession } = useSessionStore();
     const [playingSessionId, setPlayingSessionId] = useState<string | null>(null);
+    const [selectedSessionForFeedback, setSelectedSessionForFeedback] = useState<SessionData | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const handlePlay = (sessionId: string, audioBase64?: string) => {
+    const handlePlay = (sessionId: string, audioUrl?: string, audioBlob?: Blob) => {
         if (playingSessionId === sessionId) {
             // Stop
             if (audioRef.current) {
@@ -45,7 +54,9 @@ const HistoryPage = () => {
             return;
         }
 
-        if (!audioBase64) {
+        const source = audioUrl || (audioBlob ? URL.createObjectURL(audioBlob) : null);
+
+        if (!source) {
             toast.error("No recording available for this session.");
             return;
         }
@@ -56,7 +67,7 @@ const HistoryPage = () => {
         }
 
         try {
-            const audio = new Audio(audioBase64);
+            const audio = new Audio(source);
             audioRef.current = audio;
             audio.onended = () => setPlayingSessionId(null);
             audio.play().catch(e => {
@@ -141,9 +152,14 @@ const HistoryPage = () => {
                                                 </div>
                                             </div>
                                             {session.analysis && (
-                                                <div className="text-green-400 text-xs font-medium px-2 py-1 rounded bg-green-500/10 border border-green-500/20">
-                                                    Feedback Available
-                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setSelectedSessionForFeedback(session)}
+                                                    className="text-green-400 border-green-500/20 bg-green-500/10 hover:bg-green-500/20"
+                                                >
+                                                    View Feedback
+                                                </Button>
                                             )}
                                         </div>
 
@@ -152,8 +168,8 @@ const HistoryPage = () => {
                                             <Button
                                                 variant={playingSessionId === session.id ? "default" : "outline"}
                                                 size="sm"
-                                                onClick={() => handlePlay(session.id, (session as any).audioBase64)}
-                                                disabled={!(session as any).audioBase64}
+                                                onClick={() => handlePlay(session.id, session.audioUrl, session.audioBlob)}
+                                                disabled={!session.audioUrl && !session.audioBlob}
                                                 className={playingSessionId === session.id ? "bg-red-500 hover:bg-red-600 text-white border-none" : "border-white/10"}
                                             >
                                                 {playingSessionId === session.id ? (
@@ -193,6 +209,40 @@ const HistoryPage = () => {
                     </motion.div>
                 )}
             </main>
+
+            <Dialog open={!!selectedSessionForFeedback} onOpenChange={(open) => !open && setSelectedSessionForFeedback(null)}>
+                <DialogContent className="max-w-2xl bg-card border-white/10 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                            <Music className="h-6 w-6 text-primary" />
+                            AI Coach Feedback
+                        </DialogTitle>
+                        <DialogDescription className="text-muted-foreground">
+                            Session: {selectedSessionForFeedback?.songName} • {selectedSessionForFeedback && new Date(selectedSessionForFeedback.date).toLocaleDateString()}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-6 mt-4">
+                        <section>
+                            <h4 className="text-lg font-semibold text-primary mb-2">Performance Summary</h4>
+                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200">
+                                {selectedSessionForFeedback?.analysis?.performace_summary}
+                            </div>
+                        </section>
+
+                        <section>
+                            <h4 className="text-lg font-semibold text-amber-400 mb-2">Coach's Advice</h4>
+                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200">
+                                {selectedSessionForFeedback?.analysis?.["coach-feedback"]}
+                            </div>
+                        </section>
+                    </div>
+
+                    <div className="mt-6 flex justify-end">
+                        <Button onClick={() => setSelectedSessionForFeedback(null)}>Close</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

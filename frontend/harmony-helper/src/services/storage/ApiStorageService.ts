@@ -52,6 +52,9 @@ export class ApiStorageService implements IStorageService {
             const error = await res.json().catch(() => ({ detail: "Unknown error" }));
             throw new Error(error.detail || "Failed to save session");
         }
+
+        const data = await res.json();
+        return data.audio_url;
     }
 
     async getSessions(): Promise<SessionData[]> {
@@ -59,7 +62,25 @@ export class ApiStorageService implements IStorageService {
             headers: await this.getHeaders()
         });
         if (!res.ok) throw new Error("Failed to fetch sessions");
-        return res.json();
+        const data = await res.json();
+
+        return data.map((s: any) => ({
+            id: s.id,
+            date: s.date,
+            songName: s.song_name,
+            instrument: s.instrument,
+            durationSeconds: s.duration_seconds,
+            totalPracticeSeconds: s.total_practice_seconds,
+            audioUrl: s.audio_url,
+            xmlContent: s.xml_content,
+            analysis: s.analysis_summary ? {
+                "performace_summary": s.analysis_summary,
+                "coach-feedback": s.analysis_feedback,
+                "user-spectrogram": "",
+                "target-spectrogram": "",
+                "marked-up-musicxml": s.xml_content
+            } : undefined
+        }));
     }
 
     async getSessionById(id: string): Promise<SessionData | null> {
@@ -67,7 +88,25 @@ export class ApiStorageService implements IStorageService {
             headers: await this.getHeaders()
         });
         if (!res.ok) return null;
-        return res.json();
+        const s = await res.json();
+
+        return {
+            id: s.id,
+            date: s.date,
+            songName: s.song_name,
+            instrument: s.instrument,
+            durationSeconds: s.duration_seconds,
+            totalPracticeSeconds: s.total_practice_seconds,
+            audioUrl: s.audio_url,
+            xmlContent: s.xml_content,
+            analysis: s.analysis_summary ? {
+                "performace_summary": s.analysis_summary,
+                "coach-feedback": s.analysis_feedback,
+                "user-spectrogram": "",
+                "target-spectrogram": "",
+                "marked-up-musicxml": s.xml_content
+            } : undefined
+        };
     }
 
     async deleteSession(id: string): Promise<void> {
