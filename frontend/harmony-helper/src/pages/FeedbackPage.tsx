@@ -74,44 +74,6 @@ const FeedbackPage = () => {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col gap-6"
           >
-            {/* Spectrogram Comparison */}
-            {(userSpectrogram || targetSpectrogram) && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {targetSpectrogram && (
-                  <div className="rounded-lg border border-border bg-card p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                      <Target className="h-4 w-4" /> Target Spectrogram
-                    </h3>
-                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
-                      {targetSpectrogram.startsWith("data:") || targetSpectrogram.startsWith("http") ? (
-                        <img src={targetSpectrogram} alt="Target Spectrogram" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                          {targetSpectrogram}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {userSpectrogram && (
-                  <div className="rounded-lg border border-border bg-card p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4" /> Your Spectrogram
-                    </h3>
-                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
-                      {userSpectrogram.startsWith("data:") || userSpectrogram.startsWith("http") ? (
-                        <img src={userSpectrogram} alt="User Spectrogram" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                          {userSpectrogram}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Central Content with Tabs (Sheet vs Summary) */}
             <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[500px] flex flex-col">
               <Tabs defaultValue="sheet" className="w-full flex-1 flex flex-col">
@@ -149,6 +111,44 @@ const FeedbackPage = () => {
                 </div>
               </Tabs>
             </div>
+
+            {/* Spectrogram Comparison */}
+            {(userSpectrogram || targetSpectrogram) && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {targetSpectrogram && (
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <Target className="h-4 w-4" /> Target Spectrogram
+                    </h3>
+                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
+                      {targetSpectrogram.startsWith("data:") || targetSpectrogram.startsWith("http") ? (
+                        <img src={targetSpectrogram} alt="Target Spectrogram" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                          {targetSpectrogram}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {userSpectrogram && (
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" /> Your Spectrogram
+                    </h3>
+                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
+                      {userSpectrogram.startsWith("data:") || userSpectrogram.startsWith("http") ? (
+                        <img src={userSpectrogram} alt="User Spectrogram" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                          {userSpectrogram}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
 
           {/* Right Sidebar: AI Avatar */}
@@ -164,12 +164,6 @@ const FeedbackPage = () => {
               </h3>
               {/* Avatar speaks the 'coach-feedback' (detailed/short actionable) */}
               <AIAvatar feedbackText={detailedFeedback} autoSpeak={true} />
-
-              <div className="mt-4 p-4 rounded-lg bg-background/50 border border-border">
-                <p className="text-sm text-muted-foreground italic">
-                  "{detailedFeedback}"
-                </p>
-              </div>
             </div>
 
             {/* Stats Summary */}
