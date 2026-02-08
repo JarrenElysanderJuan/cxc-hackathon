@@ -6,7 +6,8 @@ The goal is to transition from the current "Mock/Local" storage state to a "Real
 ## Status
 - [x] Phase 11: Frontend Storage Abstraction (Complete)
 - [x] Phase 12: Backend Scaffolding & Verification (Complete)
-- [ ] Phase 13: Final Integration (Ready to Start)
+- [x] Phase 13: Final Integration (Complete)
+- [x] Documentation: Root README (Complete)
 
 ## Recent Success
 - Successfully connected to Supabase from the backend (`oltcirbrnqzexgxnkemm.supabase.co`).

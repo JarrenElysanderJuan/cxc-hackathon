@@ -16,3 +16,8 @@
 - Supabase Schema defined and connection tested.
 - FastAPI server with endpoints for `users/sync`, `sessions`, and `stats`.
 - Virtual environment created and verified.
+
+## Phase 13: Documentation & Polish
+- Created Root `README.md` with setup instructions.
+- Documented Storage Toggling and User Sync flows.
+- Fixed CSS lint errors.

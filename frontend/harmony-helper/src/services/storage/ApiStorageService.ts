@@ -7,30 +7,50 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export class ApiStorageService implements IStorageService {
 
+    private token: string | null = null;
+
+    setToken(token: string): void {
+        this.token = token;
+        console.log("🔐 [ApiStorage] Token updated");
+    }
+
     private async getHeaders(): Promise<HeadersInit> {
-        // Implementation note: In real app we might need to get token async
-        // For now assuming we can access it from store or auth0 hook
-        // This might require passing the token into methods or useAuthStore.getState()
-
-        // Placeholder for token logic
-        const token = "mock-token"; // Replace with real token retrieval
-
         return {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
+            "Authorization": `Bearer ${this.token || ""}`
         };
     }
 
     async saveSession(session: SessionData): Promise<void> {
-        // For API, we might split audio upload from metadata save
-        // 1. Upload audio -> get URL
-        // 2. Post metadata with audio_url
+        let audioBase64 = "";
+        if (session.audioBlob) {
+            audioBase64 = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(session.audioBlob!);
+            });
+        }
 
-        // For scaffolding, just log
-        console.log("[ApiStorage] Saving session to", API_URL, session);
+        const payload = {
+            song_name: session.songName,
+            instrument: session.instrument,
+            duration_seconds: session.durationSeconds,
+            date: session.date,
+            xml_content: session.xmlContent,
+            analysis: session.analysis,
+            audioBase64: audioBase64,
+        };
 
-        // Mock implementation for now until backend is ready
-        throw new Error("Backend not fully implemented yet");
+        const res = await fetch(`${API_URL}/api/sessions`, {
+            method: "POST",
+            headers: await this.getHeaders(),
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({ detail: "Unknown error" }));
+            throw new Error(error.detail || "Failed to save session");
+        }
     }
 
     async getSessions(): Promise<SessionData[]> {

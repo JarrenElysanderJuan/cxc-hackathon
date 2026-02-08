@@ -1,10 +1,8 @@
-# Instructions for the Next Model
-
 ## How to Proceed
-1. **Toggle Backend**:
+1. **Toggle Backend/Mock**:
    - Update `frontend/harmony-helper/.env`:
-     - Set `VITE_USE_MOCK_STORAGE=false`.
-     - Set `VITE_API_URL=http://localhost:8000`.
+     - Toggle `VITE_USE_MOCK_STORAGE` (`true` for local mock, `false` for Supabase).
+     - See `project_docs/08_storage_toggling.md` for details.
 2. **Start Backend**:
    - In a terminal: `cd backend && .\venv\Scripts\python.exe main.py`.
 3. **Verify Full Flow**:
