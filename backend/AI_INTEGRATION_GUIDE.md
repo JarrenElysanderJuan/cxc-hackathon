@@ -6,7 +6,7 @@ This guide is for the teammates working on the AI model. It explains how to inte
 
 The application follows a two-step process to ensure data integrity:
 
-1.  **Analyze (The AI Step)**: The frontend sends the recording and sheet music to your `/api/analyze` endpoint. Your model processes it and returns the coach's feedback.
+1.  **Analyze (The AI Step)**: The frontend sends the recording and sheet music to the `/api/analyze` endpoint. The server handles audio conversion and synthesizes reference audio before calling your inference logic.
 2.  **Save (The Persistence Step)**: After the user reviews the feedback, the frontend calls `/api/sessions`. This endpoint automatically takes **your AI output** and saves it into the `sessions` table in Supabase.
 
 > [!IMPORTANT]
@@ -14,66 +14,64 @@ The application follows a two-step process to ensure data integrity:
 
 ---
 
-## 2. Input Specification (`/api/analyze`)
+## 2. Input Specification (`analyze_audio` function)
 
-Your endpoint will receive a **POST** request with the following payload (`AnalyzePayload`):
+Instead of editing `main.py` directly, you should implement your logic in `backend/analyze.py`. This function is called by the main server.
 
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `Song_name` | `string` | The name of the song being practiced. |
-| `Instrument` | `string` | The instrument selected (e.g., "Piano", "Voice"). |
-| `Audio_length` | `float` | Duration of the recording in seconds. |
-| `Recording` | `string` | **Base64 encoded** audio data (WebM/AAC format). |
-| `Target_XML` | `string` | The MusicXML content of the sheet music practiced. |
-| `BPM` | `int` | The tempo set during the session. |
-| `Start_Measure`| `int` | The measure number where the user started playing. |
+```python
+async def analyze_audio(
+    song_name: str, 
+    instrument: str, 
+    audio_length: float, 
+    user_wav: bytes, 
+    target_wav: bytes
+) -> dict:
+```
+
+### Parameters:
+- `user_wav`: Raw bytes of the user's performance (PCM WAV).
+- `target_wav`: Raw bytes of the synthesized reference (PCM WAV).
+- `audio_length`: Total duration in seconds.
 
 ---
 
 ## 3. Output Specification (Response)
 
-For the frontend to display your feedback and the backend to save it, you **must** return a JSON object with at least these two fields:
+For the frontend to display your feedback, you **must** return a dictionary with these fields:
 
-```json
+```python
 {
-    "performace_summary": "A high-level summary of how the user played (e.g., 'Great rhythm!').",
-    "coach-feedback": "Specific, actionable advice (e.g., 'Watch your dynamics in measure 4.').",
-    "user-spectrogram": "Optional: Base64 string of a generated spectrogram image.",
-    "target-spectrogram": "Optional: Base64 string of a reference spectrogram image.",
-    "marked-up-musicxml": "Optional: Modified MusicXML if you want to highlight errors."
+    "errors": [
+        ["pitch", 1.5, "Slightly sharp on the F#"],
+        ["rhythm", 4.0, "Dragged the quarter note"]
+    ],
+    "user_spectrogram": "data:image/png;base64,...",
+    "target_spectrogram": "data:image/png;base64,..."
 }
 ```
 
+### Return Data Details:
+- **`errors`**: A list of `[type, timestamp, description]`. 
+    - `type`: "pitch", "rhythm", or "dynamics".
+    - `timestamp`: Seconds from the start of the recording.
+- **Spectrograms**: Base64 data URIs of the Mel-spectrogram images.
+
 ---
 
-## 4. Where to Implement Your Logic
+## 4. Helper Modules Provided
 
-Inside `backend/main.py`, find the `@app.post("/api/analyze")` function. 
-
-Currently, it looks like this:
-
-```python
-@app.post("/api/analyze")
-async def analyze(payload: AnalyzePayload):
-    # TODO: Replace the mock response below with your AI model logic
-    return {
-        "performace_summary": f"Great session with {payload.Song_name}!",
-        "coach-feedback": "Try focusing on the transition at measure 4.",
-        # ...
-    }
-```
-
-### Tips for Implementation:
-- **Base64 Decoding**: You can use `base64.b64decode(payload.Recording)` to get the raw bytes of the audio.
-- **MusicXML Parsing**: The `Target_XML` is provided as a raw string.
-- **Environment**: If your model requires specific libraries (like `librosa` or `numpy`), add them to `backend/requirements.txt`.
+I have integrated the following modules from your team to help with the pipeline:
+- **`conversions.py`**: Handles MusicXML to MIDI to WAV synthesis.
+- **`reportandscript.py`**: Automatically generates LLM summaries and coach scripts from your `errors` list.
+- **`xml_mark_up.py`**: Colors notes red in the MusicXML based on your `errors` list.
 
 ---
 
 ## 5. Verification
 
 To verify that your integration is working:
-1.  Run the backend: `python main.py`.
-2.  Perform a recording in the frontend.
-3.  Click **"AI Feedback"**.
-4.  If your feedback appears on the feedback screen, and then appears in the **"Previous Sessions"** history page after saving, the integration is successful!
+1.  Open `backend/analyze.py`.
+2.  Drop your inference logic into the `analyze_audio` function.
+3.  Run the backend: `python main.py`.
+4.  Perform a recording in the frontend and click **"AI Feedback"**.
+5.  If the sheet music shows red notes and the avatar speaks your feedback, the integration is successful!

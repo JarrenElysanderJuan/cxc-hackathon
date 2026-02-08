@@ -8,7 +8,7 @@ import MusicXMLRenderer from "@/components/MusicXMLRenderer";
 import RecordingBar from "@/components/RecordingBar";
 import { useSessionStore } from "@/store/useSessionStore";
 import { audioService } from "@/services/audio";
-import { api } from "@/services/api";
+import { api, AnalyzePayload } from "@/services/api";
 import { metronomeService } from "@/services/metronome";
 import { toast } from "sonner";
 import {
@@ -177,17 +177,17 @@ const SessionPage = () => {
 
       const audioBase64 = await blobToBase64(currentSession.audioBlob);
 
-      const payload = {
+      const payload: AnalyzePayload = {
         Song_name: currentSession.songName,
         Instrument: currentSession.instrument,
         Audio_length: currentSession.durationSeconds || 0,
         Recording: audioBase64,
         Target_XML: currentSession.xmlContent,
         BPM: bpm,
-        Start_Measure: startMeasure
+        Starting_measure: startMeasure
       };
 
-      const results = await api.analyze(payload as any); // Type assertion until API type updated
+      const results = await api.analyze(payload);
       setAnalysisResults(results);
 
       toast.success("Analysis complete!");

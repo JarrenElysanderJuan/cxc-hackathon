@@ -12,12 +12,13 @@
 - Created `LocalStorageService` to preserve local behavior during migration.
 - Created `ApiStorageService` using `fetch`.
 
-## Phase 12: Backend Scaffolding
-- Supabase Schema defined and connection tested.
-- FastAPI server with endpoints for `users/sync`, `sessions`, and `stats`.
-- Virtual environment created and verified.
+## Phase 20-22: Audio Persistence
+- Implemented WebM recording upload to Supabase Storage.
+- Standardized public URLs for cross-machine playback.
+- Added optimistic UI updates for session saving.
 
-## Phase 13: Documentation & Polish
-- Created Root `README.md` with setup instructions.
-- Documented Storage Toggling and User Sync flows.
-- Fixed CSS lint errors.
+## Phase 23: AI Pipeline Integration
+- Integrated partner modules: `conversions.py`, `reportandscript.py`, `xml_mark_up.py`.
+- Automated audio conversion (WebM to WAV) in the backend.
+- Implemented `/api/analyze` for full analysis, reference synthesis, and MusicXML feedback.
+- Defined `AI_ANALYSIS_CONTRACT.md` for team collaboration.

@@ -1,11 +1,18 @@
 import os
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
+import base64
+import io
+from pydub import AudioSegment
+from reportandscript import generate_texts
+from xml_mark_up import mark_up_xml
+from conversions import xml_to_wave
+from analyze import analyze_audio
 
 load_dotenv()
 
@@ -70,13 +77,13 @@ class SessionBase(BaseModel):
     audioBase64: Optional[str] = None
 
 class AnalyzePayload(BaseModel):
-    Song_name: str
-    Instrument: str
-    Audio_length: float
-    Recording: str
-    Target_XML: str
-    BPM: int
-    Start_Measure: int
+    song_name: str = Field(alias="Song_name")
+    instrument: str = Field(alias="Instrument")
+    audio_length: float = Field(alias="Audio_length")
+    recording_b64: str = Field(alias="Recording")  # Base64 WebM from frontend
+    target_xml_str: str = Field(alias="Target_XML") 
+    bpm: int = Field(alias="BPM")
+    starting_measure: int = Field(alias="Starting_measure")
 
 # Endpoints
 @app.get("/")
@@ -99,14 +106,74 @@ async def sync_user(user: UserSync):
 
 @app.post("/api/analyze")
 async def analyze(payload: AnalyzePayload):
-    # Mock AI response for now (to be replaced by teammates)
-    return {
-        "performace_summary": f"Great session with {payload.Song_name}! Your {payload.Instrument} playing showed good rhythm at {payload.BPM} BPM.",
-        "coach-feedback": f"Try focusing on the transition at measure {payload.Start_Measure}. Keep up the steady practice!",
-        "user-spectrogram": "dummy_user_spectrogram_base64",
-        "target-spectrogram": "dummy_target_spectrogram_base64",
-        "marked-up-musicxml": payload.Target_XML
-    }
+    try:
+        # 1. Decode WebM from Base64
+        header, encoded = payload.recording_b64.split(",", 1) if "," in payload.recording_b64 else ("", payload.recording_b64)
+        audio_raw = base64.b64decode(encoded)
+        
+        # 2. Convert WebM to Wav using pydub
+        # This acts as our "C4 to Wave" replacement for modern web audio
+        try:
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_raw))
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            user_wav = wav_io.getvalue()
+        except Exception as e:
+            print(f"⚠️ Audio conversion warning: {e}. Using raw data as fallback.")
+            user_wav = audio_raw
+
+        # 3. Generate Target Audio from MusicXML (Partner Logic)
+        target_wav_buffer = await xml_to_wave(
+            payload.target_xml_str,
+            payload.bpm,
+            payload.starting_measure,
+            payload.audio_length,
+            instrument_id=0 # TODO: Map instrument names to MIDI programs
+        )
+        target_wav = target_wav_buffer.getvalue()
+
+        # 4. Perform Analysis (Partner Black Box)
+        analysis_results = await analyze_audio(
+            payload.song_name,
+            payload.instrument,
+            payload.audio_length,
+            user_wav,
+            target_wav
+        )
+
+        errors = analysis_results["errors"]
+        user_spec = analysis_results["user_spectrogram"]
+        target_spec = analysis_results["target_spectrogram"]
+
+        # 5. Generate Text Reports (Partner Logic)
+        report, tts = await generate_texts(
+            payload.song_name,
+            payload.instrument,
+            payload.audio_length,
+            errors
+        )
+
+        # 6. Mark up XML (Partner Logic)
+        marked_xml = mark_up_xml(
+            payload.target_xml_str,
+            errors,
+            payload.bpm,
+            payload.starting_measure
+        )
+
+        return {
+            "performace_summary": report,
+            "coach-feedback": tts,
+            "user-spectrogram": user_spec,
+            "target-spectrogram": target_spec,
+            "marked-up-musicxml": marked_xml
+        }
+
+    except Exception as e:
+        print(f"❌ Analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/sessions")
 async def save_session(session: SessionBase, auth0_id: str = Depends(get_current_user_id)):

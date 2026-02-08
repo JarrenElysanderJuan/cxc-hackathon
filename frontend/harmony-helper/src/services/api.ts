@@ -10,7 +10,7 @@ export interface AnalyzePayload {
     Recording: string; // Base64 or Blob URL
     Target_XML: string; // MusicXML content
     BPM: number;
-    Start_Measure: number;
+    Starting_measure: number;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";

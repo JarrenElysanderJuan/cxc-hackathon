@@ -51,6 +51,7 @@ pip install -r requirements.txt
 ```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+OPENROUTER_API_KEY=your_openrouter_api_key
 ```
 
 ### 2. Frontend Setup
