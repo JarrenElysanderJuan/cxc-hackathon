@@ -1,9 +1,9 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -29,6 +29,29 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
+# Helper to get user from token
+async def get_current_user_id(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        # For development/testing, return a mock ID if no token or if it's the mock-token
+        if authorization == "Bearer mock-token" or not authorization:
+            return os.getenv("MOCK_USER_ID", "mock_auth0_id")
+        return os.getenv("MOCK_USER_ID", "mock_auth0_id")
+    
+    try:
+        token = authorization.split(" ")[1]
+        import json
+        import base64
+        # Extract sub from JWT payload
+        _, payload, _ = token.split(".")
+        # Add padding if needed
+        padding = "=" * (4 - len(payload) % 4)
+        decoded = base64.b64decode(payload + padding).decode("utf-8")
+        data = json.loads(decoded)
+        return data.get("sub")
+    except Exception as e:
+        print(f"Token decode error: {e}")
+        return "mock_auth0_id"
+
 # Models
 class UserSync(BaseModel):
     sub: str
@@ -45,6 +68,15 @@ class SessionBase(BaseModel):
     analysis: Optional[dict] = None
     audioBase64: Optional[str] = None
 
+class AnalyzePayload(BaseModel):
+    Song_name: str
+    Instrument: str
+    Audio_length: float
+    Recording: str
+    Target_XML: str
+    BPM: int
+    Start_Measure: int
+
 # Endpoints
 @app.get("/")
 async def root():
@@ -54,7 +86,6 @@ async def root():
 async def sync_user(user: UserSync):
     if not supabase: raise HTTPException(500, "Supabase not configured")
     
-    # Upsert user
     data = {
         "auth0_id": user.sub,
         "email": user.email,
@@ -65,38 +96,64 @@ async def sync_user(user: UserSync):
     res = supabase.table("users").upsert(data, on_conflict="auth0_id").execute()
     return {"status": "success", "data": res.data}
 
+@app.post("/api/analyze")
+async def analyze(payload: AnalyzePayload):
+    # Mock AI response for now (to be replaced by teammates)
+    return {
+        "performace_summary": f"Great session with {payload.Song_name}! Your {payload.Instrument} playing showed good rhythm at {payload.BPM} BPM.",
+        "coach-feedback": f"Try focusing on the transition at measure {payload.Start_Measure}. Keep up the steady practice!",
+        "user-spectrogram": "dummy_user_spectrogram_base64",
+        "target-spectrogram": "dummy_target_spectrogram_base64",
+        "marked-up-musicxml": payload.Target_XML
+    }
+
 @app.post("/api/sessions")
-async def save_session(session: SessionBase):
+async def save_session(session: SessionBase, auth0_id: str = Depends(get_current_user_id)):
     if not supabase: raise HTTPException(500, "Supabase not configured")
     
-    # 1. Get user UUID from auth0_id (TODO: Use real user from token)
-    # For now, let's assume we have a user sync'd 
-    user_res = supabase.table("users").select("id").eq("auth0_id", "mock_auth0_id").execute()
+    user_res = supabase.table("users").select("id, streak_count, last_practice_date").eq("auth0_id", auth0_id).execute()
     if not user_res.data:
-        # Fallback or error
         raise HTTPException(404, "User not found. Please sync first.")
     
-    user_id = user_res.data[0]["id"]
+    user_info = user_res.data[0]
+    user_id = user_info["id"]
     
+    # Streak Logic
+    new_streak = user_info.get("streak_count", 0) or 0
+    last_date_str = user_info.get("last_practice_date")
+    today = datetime.now().date()
+    
+    if last_date_str:
+        try:
+            # Parse ISO date, handling potential whitespace/padding
+            last_date = datetime.fromisoformat(last_date_str.replace("Z", "+00:00")).date()
+            if last_date == today - timedelta(days=1):
+                new_streak += 1
+            elif last_date < today - timedelta(days=1):
+                new_streak = 1
+            # If they already practiced today, keep streak the same
+        except Exception:
+            new_streak = 1
+    else:
+        new_streak = 1
+
     audio_url = None
     if session.audioBase64:
         try:
-            # Decode base64
             import base64
-            header, encoded = session.audioBase64.split(",", 1)
+            # Strip header if present
+            if "," in session.audioBase64:
+                _, encoded = session.audioBase64.split(",", 1)
+            else:
+                encoded = session.audioBase64
+                
             audio_data = base64.b64decode(encoded)
-            
-            # Upload to Supabase Storage
             filename = f"{user_id}/{datetime.now().timestamp()}.webm"
-            # Note: storage.from_("recordings").upload(...)
-            # res = supabase.storage.from_("recordings").upload(filename, audio_data)
-            # For simplicity in mock, just assume URL
+            # Actual upload logic would go here
             audio_url = f"{SUPABASE_URL}/storage/v1/object/public/recordings/{filename}"
-            print(f"Uploaded audio to {audio_url}")
         except Exception as e:
-            print(f"Audio upload failed: {e}")
+            print(f"Audio processing failed: {e}")
 
-    # 2. Save Session to DB
     session_data = {
         "user_id": user_id,
         "song_name": session.song_name,
@@ -109,36 +166,83 @@ async def save_session(session: SessionBase):
         "audio_url": audio_url
     }
     
-    res = supabase.table("sessions").insert(session_data).execute()
-    return {"status": "success", "id": res.data[0]["id"]}
+    # Insert session
+    supabase.table("sessions").insert(session_data).execute()
+    
+    # Update user streak and last_practice_date
+    supabase.table("users").update({
+        "streak_count": new_streak,
+        "last_practice_date": datetime.now().isoformat()
+    }).eq("id", user_id).execute()
+    
+    return {"status": "success", "streak": new_streak}
 
 @app.get("/api/sessions")
-async def get_sessions():
+async def get_sessions(auth0_id: str = Depends(get_current_user_id)):
     if not supabase: raise HTTPException(500, "Supabase not configured")
-    res = supabase.table("sessions").select("*").order("date", desc=True).execute()
+    
+    user_res = supabase.table("users").select("id").eq("auth0_id", auth0_id).execute()
+    if not user_res.data: return []
+    
+    user_id = user_res.data[0]["id"]
+    res = supabase.table("sessions").select("*").eq("user_id", user_id).order("date", desc=True).execute()
     return res.data
 
 @app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, auth0_id: str = Depends(get_current_user_id)):
     if not supabase: raise HTTPException(500, "Supabase not configured")
-    supabase.table("sessions").delete().eq("id", session_id).execute()
+    
+    user_res = supabase.table("users").select("id").eq("auth0_id", auth0_id).execute()
+    if not user_res.data: raise HTTPException(403)
+    
+    user_id = user_res.data[0]["id"]
+    supabase.table("sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
     return {"status": "success"}
 
 @app.get("/api/stats")
-async def get_stats():
-    # Mock stats for now
+async def get_stats(auth0_id: str = Depends(get_current_user_id)):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    user_res = supabase.table("users").select("id, streak_count").eq("auth0_id", auth0_id).execute()
+    if not user_res.data:
+        return {"weekly_progress": [], "streak": 0, "total_minutes": 0}
+    
+    user_id = user_res.data[0]["id"]
+    streak = user_res.data[0].get("streak_count", 0)
+    
+    # Total minutes
+    sessions_res = supabase.table("sessions").select("duration_seconds").eq("user_id", user_id).execute()
+    total_seconds = sum(s["duration_seconds"] for s in sessions_res.data)
+    total_minutes = total_seconds // 60
+    
+    # Weekly progress
+    from collections import defaultdict
+    daily_stats = defaultdict(int)
+    
+    # Get last 7 days of sessions
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    sessions_res = supabase.table("sessions") \
+        .select("date, duration_seconds") \
+        .eq("user_id", user_id) \
+        .gte("date", seven_days_ago.isoformat()) \
+        .execute()
+    
+    for s in sessions_res.data:
+        try:
+            # Parse date and get day name
+            dt = datetime.fromisoformat(s["date"].replace("Z", "+00:00"))
+            day_name = dt.strftime("%a")
+            daily_stats[day_name] += s["duration_seconds"] // 60
+        except Exception:
+            continue
+            
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    weekly_progress = [{"day": d, "minutes": daily_stats.get(d, 0)} for d in days]
+
     return {
-        "weekly_progress": [
-            {"day": "Mon", "minutes": 10},
-            {"day": "Tue", "minutes": 25},
-            {"day": "Wed", "minutes": 15},
-            {"day": "Thu", "minutes": 30},
-            {"day": "Fri", "minutes": 20},
-            {"day": "Sat", "minutes": 45},
-            {"day": "Sun", "minutes": 35},
-        ],
-        "streak": 3,
-        "total_minutes": 180
+        "weekly_progress": weekly_progress,
+        "streak": streak,
+        "total_minutes": total_minutes
     }
 
 if __name__ == "__main__":

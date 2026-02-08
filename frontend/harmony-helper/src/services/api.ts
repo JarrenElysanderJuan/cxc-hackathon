@@ -13,23 +13,26 @@ export interface AnalyzePayload {
     Start_Measure: number;
 }
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 export const api = {
     analyze: async (payload: AnalyzePayload): Promise<AnalysisResponse> => {
         console.log("🚀 [API] Sending /analyze request:", payload);
 
-        // Simulate network delay
-        await delay(2000);
+        const res = await fetch(`${API_URL}/api/analyze`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload)
+        });
 
-        // Mock Response
-        const mockResponse: AnalysisResponse = {
-            "performace_summary": "Great job! Your pitch was generally accurate, but watch your tempo in the second measure.",
-            "coach-feedback": "Focus on maintaining consistent breath support during the high notes. Try practicing the transition from measure 3 to 4 slowly.",
-            "user-spectrogram": "dummy_user_spectrogram_base64",
-            "target-spectrogram": "dummy_target_spectrogram_base64",
-            "marked-up-musicxml": payload.Target_XML // In reality this would be marked up
-        };
+        if (!res.ok) {
+            throw new Error("Analysis failed");
+        }
 
-        console.log("✅ [API] Received /analyze response:", mockResponse);
-        return mockResponse;
+        const data: AnalysisResponse = await res.json();
+        console.log("✅ [API] Received /analyze response:", data);
+        return data;
     }
 };

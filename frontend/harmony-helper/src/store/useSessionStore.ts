@@ -10,6 +10,8 @@ interface SessionState {
     // History & Gamification
     history: SessionData[];
     streak: number;
+    totalMinutes: number;
+    weeklyProgress: { day: string; minutes: number }[];
     isLoadingHistory: boolean;
 
     // Actions
@@ -20,6 +22,7 @@ interface SessionState {
     clearSession: () => void;
     saveSession: () => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
+    refreshStats: () => Promise<void>;
 
     setRecordingStatus: (isRecording: boolean) => void;
     setAnalyzingStatus: (isAnalyzing: boolean) => void;
@@ -32,6 +35,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     isAnalyzing: false,
     history: [],
     streak: 0,
+    totalMinutes: 0,
+    weeklyProgress: [],
     isLoadingHistory: false,
 
     init: async () => {
@@ -41,11 +46,26 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                 storageService.getSessions(),
                 storageService.getUserStats()
             ]);
-            set({ history, streak: stats.streak, isLoadingHistory: false });
+            set({
+                history,
+                streak: stats.streak,
+                totalMinutes: stats.total_minutes,
+                weeklyProgress: stats.weekly_progress,
+                isLoadingHistory: false
+            });
         } catch (error) {
             console.error("Failed to load session history:", error);
             set({ isLoadingHistory: false });
         }
+    },
+
+    refreshStats: async () => {
+        const stats = await storageService.getUserStats();
+        set({
+            streak: stats.streak,
+            totalMinutes: stats.total_minutes,
+            weeklyProgress: stats.weekly_progress
+        });
     },
 
     startNewSession: (xmlContent, songName, instrument) => set({
@@ -81,9 +101,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
         try {
             await storageService.saveSession(currentSession);
-            // Re-fetch stats to update streak if changed
-            const stats = await storageService.getUserStats();
-            set({ streak: stats.streak });
+            await get().refreshStats();
         } catch (error) {
             console.error("Failed to save session:", error);
             // Rollback on error? For now just log.

@@ -1,18 +1,24 @@
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
-
-const data = [
-    { day: "Mon", minutes: 15 },
-    { day: "Tue", minutes: 30 },
-    { day: "Wed", minutes: 45 },
-    { day: "Thu", minutes: 20 },
-    { day: "Fri", minutes: 60 },
-    { day: "Sat", minutes: 40 },
-    { day: "Sun", minutes: 25 },
-];
+import { useSessionStore } from "@/store/useSessionStore";
 
 export const UserStats = () => {
+    const { weeklyProgress, totalMinutes } = useSessionStore();
+
+    // Fallback if data is empty
+    const data = weeklyProgress.length > 0 ? weeklyProgress : [
+        { day: "Mon", minutes: 0 },
+        { day: "Tue", minutes: 0 },
+        { day: "Wed", minutes: 0 },
+        { day: "Thu", minutes: 0 },
+        { day: "Fri", minutes: 0 },
+        { day: "Sat", minutes: 0 },
+        { day: "Sun", minutes: 0 },
+    ];
+
+    const totalHours = (totalMinutes / 60).toFixed(1);
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -25,7 +31,7 @@ export const UserStats = () => {
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
                         Weekly Progress
                         <span className="text-xs font-normal text-muted-foreground ml-auto">
-                            Total: 3.5 hrs
+                            Total: {totalHours} hrs
                         </span>
                     </CardTitle>
                 </CardHeader>
