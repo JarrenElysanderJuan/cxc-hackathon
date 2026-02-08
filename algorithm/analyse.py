@@ -100,25 +100,36 @@ def find_errors(path_perfect, path_played):
     f0_perf, onsets_perf, times = extract_features(path_perfect)
     f0_play, onsets_play, _ = extract_features(path_played)
     
-    f0_perf[np.isnan(f0_perf)] = 1
-    f0_perf = librosa.hz_to_midi(f0_perf)
-    f0_play[np.isnan(f0_play)] = 1
-    f0_play = librosa.hz_to_midi(f0_play)
-    
     onsets_perf_arr = np.full(f0_perf.shape, np.nan)
     onsets_play_arr = np.full(f0_play.shape, np.nan)
     onsets_perf_arr[onsets_perf[:, 0].astype(np.int64)] = onsets_perf[:, 1]
     onsets_play_arr[onsets_play[:, 0].astype(np.int64)] = onsets_play[:, 1]
+
+    for i in range(f0_play.shape[0]):
+        if not np.isnan(f0_play[i]):
+            index = max(0, i)
+            f0_play = f0_play[index:f0_play.shape[0]]
+            onsets_play_arr = onsets_play_arr[index:f0_play.shape[0]]
+            break
+
+    for i in reversed(range(f0_play.shape[0])):
+        if not np.isnan(f0_play[i]):
+            index = min(f0_play.shape[0], i)
+            f0_play = f0_play[0:index]
+            onsets_play_arr = onsets_play_arr[0:index]
+            break
     
-    
-    onsets_perf_d = np.full(f0_perf.shape, 0)
-    onsets_play_d = np.full(f0_play.shape, 0)
-    onsets_perf_d[onsets_perf[:, 0].astype(np.int64)] = onsets_perf[:, 1]
-    onsets_play_d[onsets_play[:, 0].astype(np.int64)] = onsets_play[:, 1]
+    # Removes nan and converts to midi
+    f0_perf[np.isnan(f0_perf)] = 1
+    f0_perf = librosa.hz_to_midi(f0_perf)
+    f0_play[np.isnan(f0_play)] = 1
+    f0_play = librosa.hz_to_midi(f0_play)
 
     D, wp = librosa.sequence.dtw(f0_perf[np.newaxis, :],
                                    f0_play[np.newaxis, :],
-                                   subseq=True)
+                                   subseq=False,
+                                   global_constraints=True,
+                                   weights_add=np.array([0, 100, 100]))
     wp = np.flip(wp, 0)
     
     total_diff = 0
@@ -149,20 +160,18 @@ def find_errors(path_perfect, path_played):
 
         times_adj[i] = times[wp[i, 0]]
     
-    adj_perf[adj_perf == 1] = np.nan
-    adj_play[adj_play == 1] = np.nan
-    
     fig, ax = plt.subplots()
-#     ax.plot(times_adj, adj_perf, label='f0', color='cyan', linewidth=1)
-#     ax.plot(times_adj, adj_play, label='f0', color='red', linewidth=1)
-#     ax.plot(times_adj, onset_adj_perf, label='f0', color='cyan', linestyle='',
-#             marker='+', markersize=10)
+    ax.plot(times_adj, adj_perf, label='f0', color='cyan', linewidth=1)
+#     ax.plot(_, f0_play, label='f0', color='cyan', linewidth=1)
+    ax.plot(times_adj, adj_play, label='f0', color='red', linewidth=1)
+    ax.plot(times_adj, onset_adj_perf, label='f0', color='cyan', linestyle='',
+            marker='+', markersize=10)
     ax.plot(times_adj, onset_adj_play, label='f0', color='red', linestyle='',
             marker='+', markersize=10)
 
-#    ax.plot(_, onsets_play_arr, label='f0', color='cyan', linestyle='',
+#     ax.plot(_, onsets_play_arr, label='f0', color='cyan', linestyle='',
 #             marker='+', markersize=10)
     plt.show()
 
-find_errors('ode_to_joy_perfect.wav', 'ode_miss.wav')
+find_errors('ode_piano.wav', 'ode_miss.wav')
 # find_errors('ode_to_joy_perfect.wav')
