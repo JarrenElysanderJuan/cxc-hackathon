@@ -5,7 +5,22 @@ import pretty_midi
 import numpy as np
 import librosa
 
-def xml_to_librosa(xml_file_path, instrument_id=71, sr=44100):
+# converts c4 files to librosa
+def c4_to_wave(c4_data):
+    state = None
+    pcm_data, state = audioop.adpcm2lin(c4_data, 2, state)
+
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wav_file:
+        wav_file.setnchannels(1)  
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(44100) 
+        wav_file.writeframes(pcm_data)
+
+    wav_io.seek(0)
+    return wav_io.read()
+
+async def xml_to_librosa(xml_content, bpm, starting_measure, audio_length, instrument_id=71, sr=44100):
     sf2_path = "default_soundfont.sf3"
     
     if not os.path.exists(sf2_path):
@@ -14,12 +29,23 @@ def xml_to_librosa(xml_file_path, instrument_id=71, sr=44100):
         with open(sf2_path, "wb") as f:
             f.write(response.content)
 
+    temp_midi = "temp_conversion.mid"
+
     try:
-        score = music21.converter.parse(xml_file_path)
-        temp_midi = "temp_conversion.mid"
+        score = music21.converter.parse(xml_content, format='musicxml')
+
+        # force bpm
+        for el in score.recurse().getElementsByClass(music21.tempo.MetronomeMark):
+            el.activeSite.remove(el)
+        score.insert(0, music21.tempo.MetronomeMark(number=bpm))
+
+        # slice by starting measure
+        if starting_measure > 1:
+            score = score.measures(starting_measure, None)
         score.write('midi', fp=temp_midi)
+
     except Exception as e:
-        raise RuntimeError(f"Failed to parse XML: {e}")
+        raise RuntimeError(f"Failed to parse XML content: {e}")
 
     try:
         pm = pretty_midi.PrettyMIDI(temp_midi)
@@ -31,16 +57,31 @@ def xml_to_librosa(xml_file_path, instrument_id=71, sr=44100):
                 target_inst.notes.append(note)
         
         new_pm.instruments.append(target_inst)
+        
         audio_data = new_pm.fluidsynth(fs=sr, sf2_path=sf2_path)
+        
+        # trim to audio length
+        target_samples = int(audio_length * sr)
+        
+        if len(audio_data) > target_samples:
+            audio_data = audio_data[:target_samples]
+        elif len(audio_data) < target_samples:
+            padding = np.zeros(target_samples - len(audio_data))
+            audio_data = np.concatenate((audio_data, padding))
         
         if os.path.exists(temp_midi):
             os.remove(temp_midi)
 
+        # make spectrogram
         hop_length = 512
         D = np.abs(librosa.stft(audio_data, hop_length=hop_length))
         DB = librosa.amplitude_to_db(D, ref=np.max)
         
-        DB = (DB - DB.min()) / (DB.max() - DB.min())
+        min_db, max_db = DB.min(), DB.max()
+        if max_db - min_db != 0:
+            DB = (DB - min_db) / (max_db - min_db)
+        else:
+            DB = np.zeros_like(DB)
         
         spectrogram_data = []
         freqs = librosa.fft_frequencies(sr=sr)
@@ -55,7 +96,7 @@ def xml_to_librosa(xml_file_path, instrument_id=71, sr=44100):
                 if amp > threshold:
                     spectrogram_data.append([float(t_val), float(freqs[f_idx]), float(amp)])
 
-        return audio_data, sr, spectrogram_data
+        return spectrogram_data
 
     except Exception as e:
         if os.path.exists(temp_midi):
