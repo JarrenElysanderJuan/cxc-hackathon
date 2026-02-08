@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, Music, Loader2 } from "lucide-react";
@@ -9,6 +9,7 @@ import RecordingBar from "@/components/RecordingBar";
 import { useSessionStore } from "@/store/useSessionStore";
 import { audioService } from "@/services/audio";
 import { api } from "@/services/api";
+import { metronomeService } from "@/services/metronome";
 import { toast } from "sonner";
 import {
   Select,
@@ -46,7 +47,15 @@ const SessionPage = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
   const [bpm, setBpm] = useState(120);
+  const [startMeasure, setStartMeasure] = useState(1);
+  const [isMetronomeOn, setIsMetronomeOn] = useState(false);
+  const [isCountingIn, setIsCountingIn] = useState(false);
   const [selectedInstrument, setSelectedInstrument] = useState("Piano");
+
+  // Sync BPM with Metronome
+  useEffect(() => {
+    metronomeService.setBpm(bpm);
+  }, [bpm]);
 
   const handleFileUpload = useCallback((file: File, xml: string) => {
     setUploadedFile(file);
@@ -65,12 +74,25 @@ const SessionPage = () => {
     setIsRecording(false);
     setIsPaused(false);
     setHasFinished(false);
+    metronomeService.stop();
   }, []);
 
   const handleStartRecording = useCallback(async () => {
     try {
+      if (isMetronomeOn) {
+        setIsCountingIn(true);
+        toast.info("Counting in... 4 Beats");
+        await metronomeService.playCountIn(4);
+        setIsCountingIn(false);
+      }
+
       await audioService.start();
       console.log("Recording started at", bpm, "BPM");
+
+      if (isMetronomeOn) {
+        metronomeService.start();
+      }
+
       setIsRecording(true);
       setRecordingStatus(true);
       setIsPaused(false);
@@ -78,11 +100,13 @@ const SessionPage = () => {
     } catch (error) {
       console.error("Failed to start recording:", error);
       toast.error("Could not start recording. Check permissions.");
+      setIsCountingIn(false);
     }
-  }, [bpm, setRecordingStatus]);
+  }, [bpm, setRecordingStatus, isMetronomeOn]);
 
   const handleStopRecording = useCallback(async () => {
     try {
+      metronomeService.stop(); // Stop metronome
       const blob = await audioService.stop();
       console.log("Recording stopped, blob size:", blob.size);
       setRecordingBlob(blob);
@@ -99,15 +123,17 @@ const SessionPage = () => {
 
   const handlePause = useCallback(() => {
     audioService.pause();
+    metronomeService.stop();
     console.log("Recording paused");
     setIsPaused(true);
   }, []);
 
   const handleResume = useCallback(() => {
     audioService.resume();
+    if (isMetronomeOn) metronomeService.start();
     console.log("Recording resumed");
     setIsPaused(false);
-  }, []);
+  }, [isMetronomeOn]);
 
   const handlePlaybackEnd = useCallback(() => {
     console.log("Playback reached end of sheet");
@@ -120,6 +146,7 @@ const SessionPage = () => {
     setHasFinished(false);
     setIsRecording(false);
     setIsPaused(false);
+    metronomeService.stop();
   }, []);
 
   const handleGetFeedback = useCallback(async () => {
@@ -139,10 +166,12 @@ const SessionPage = () => {
         Instrument: currentSession.instrument,
         Audio_length: currentSession.durationSeconds || 0,
         Recording: audioBase64,
-        Target_XML: currentSession.xmlContent
+        Target_XML: currentSession.xmlContent,
+        BPM: bpm,
+        Start_Measure: startMeasure
       };
 
-      const results = await api.analyze(payload);
+      const results = await api.analyze(payload as any); // Type assertion until API type updated
       setAnalysisResults(results);
 
       toast.success("Analysis complete!");
@@ -153,7 +182,7 @@ const SessionPage = () => {
     } finally {
       setAnalyzingStatus(false);
     }
-  }, [currentSession, navigate, setAnalysisResults, setAnalyzingStatus]);
+  }, [currentSession, navigate, setAnalysisResults, setAnalyzingStatus, bpm, startMeasure]);
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-studio">
@@ -274,12 +303,18 @@ const SessionPage = () => {
 
             <div className="flex-1 overflow-auto bg-card/30 p-4">
               <div className="mx-auto max-w-5xl">
+                {isCountingIn && (
+                  <div className="mb-4 flex items-center justify-center gap-2 rounded-md bg-accent p-2 text-accent-foreground animate-pulse">
+                    <span className="text-xl font-bold">Counting In... 4 Beats</span>
+                  </div>
+                )}
                 <MusicXMLRenderer
                   xmlContent={xmlContent}
                   bpm={bpm}
                   isPlaying={isRecording && !isPaused}
                   onPlaybackEnd={handlePlaybackEnd}
                   className="min-h-[60vh]"
+                  startMeasure={startMeasure}
                 />
               </div>
             </div>
@@ -297,10 +332,14 @@ const SessionPage = () => {
           onResume={handleResume}
           bpm={bpm}
           onBpmChange={setBpm}
-          disabled={!xmlContent || isAnalyzing}
+          disabled={!xmlContent || isAnalyzing || isCountingIn}
           hasFinished={hasFinished}
           onRerecord={handleRerecord}
           onGetFeedback={handleGetFeedback}
+          startMeasure={startMeasure}
+          onStartMeasureChange={setStartMeasure}
+          isMetronomeOn={isMetronomeOn}
+          onMetronomeToggle={setIsMetronomeOn}
         />
       )}
     </div>

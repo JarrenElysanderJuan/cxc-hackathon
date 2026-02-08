@@ -52,7 +52,7 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
       osmd.render();
       osmd.cursor.show();
 
-      
+
       osmdRef.current = osmd;
       setIsLoaded(true);
     } catch (err) {
@@ -61,12 +61,7 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
     }
   }, []);
 
-  /** Reset cursor to start */
-  const resetCursor = useCallback(() => {
-    if (!osmdRef.current) return;
-    osmdRef.current.cursor.reset();
-    osmdRef.current.cursor.show();
-  }, []);
+
 
   /** Advance cursor by one step */
   const nextNote = useCallback(() => {
@@ -111,7 +106,6 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
 
   /**
    * Highlight specific notes with error colors.
-   * TODO: Enhance with more granular error marking via OSMD's GraphicalNote API.
    */
   const highlightErrors = useCallback(
     (errors: Array<{ measure: number; noteIndex: number; severity: string }>) => {
@@ -137,8 +131,8 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
                       err.severity === "major"
                         ? "#ef4444"
                         : err.severity === "moderate"
-                        ? "#f59e0b"
-                        : "#3b82f6";
+                          ? "#f59e0b"
+                          : "#3b82f6";
                     svgEl.querySelectorAll("*").forEach((el: SVGElement) => {
                       el.style.fill = color;
                       el.style.stroke = color;
@@ -156,12 +150,41 @@ export function useMusicXML({ bpm, isPlaying, onEnd }: UseMusicXMLOptions) {
     []
   );
 
+  /** Jump cursor to specific measure (1-indexed) */
+  const jumpToMeasure = useCallback((measureNumber: number) => {
+    if (!osmdRef.current) return;
+    const cursor = osmdRef.current.cursor;
+    cursor.reset();
+
+    // OSMD is 0-indexed for measure index
+    const targetIndex = measureNumber - 1;
+
+    // Fast forward
+    while (cursor.iterator.CurrentMeasureIndex < targetIndex && !cursor.iterator.EndReached) {
+      cursor.next();
+    }
+
+    cursor.show();
+  }, []);
+
+  /** Reset cursor to start (or startMeasure) */
+  const resetCursor = useCallback((startMeasure: number = 1) => {
+    if (!osmdRef.current) return;
+    if (startMeasure > 1) {
+      jumpToMeasure(startMeasure);
+    } else {
+      osmdRef.current.cursor.reset();
+      osmdRef.current.cursor.show();
+    }
+  }, [jumpToMeasure]);
+
   return {
     containerRef,
     isLoaded,
     error,
     loadXML,
     resetCursor,
+    jumpToMeasure,
     nextNote,
     highlightErrors,
     osmd: osmdRef,

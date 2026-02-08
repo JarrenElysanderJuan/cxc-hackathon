@@ -15,6 +15,8 @@ interface MusicXMLRendererProps {
   onPlaybackEnd?: () => void;
   /** Optional error highlights */
   errors?: NoteError[];
+  /** Start measure (1-indexed) */
+  startMeasure?: number;
   /** Extra CSS class for the container */
   className?: string;
 }
@@ -25,6 +27,7 @@ const MusicXMLRenderer = ({
   isPlaying,
   onPlaybackEnd,
   errors,
+  startMeasure = 1,
   className = "",
 }: MusicXMLRendererProps) => {
   const {
@@ -33,6 +36,7 @@ const MusicXMLRenderer = ({
     error,
     loadXML,
     resetCursor,
+    jumpToMeasure,
     highlightErrors,
   } = useMusicXML({
     bpm,
@@ -58,12 +62,19 @@ const MusicXMLRenderer = ({
     }
   }, [isLoaded, errors, highlightErrors]);
 
+  // Jump to start measure when loaded or changed
+  useEffect(() => {
+    if (isLoaded) {
+      jumpToMeasure(startMeasure);
+    }
+  }, [isLoaded, startMeasure, jumpToMeasure]);
+
   // Reset cursor when isPlaying transitions to true
   useEffect(() => {
     if (isPlaying && isLoaded) {
-      resetCursor();
+      resetCursor(startMeasure);
     }
-  }, [isPlaying, isLoaded, resetCursor]);
+  }, [isPlaying, isLoaded, resetCursor, startMeasure]);
 
   if (error) {
     return (

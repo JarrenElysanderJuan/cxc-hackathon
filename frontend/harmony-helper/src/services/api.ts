@@ -9,6 +9,8 @@ export interface AnalyzePayload {
     Audio_length: number;
     Recording: string; // Base64 or Blob URL
     Target_XML: string; // MusicXML content
+    BPM: number;
+    Start_Measure: number;
 }
 
 export const api = {
