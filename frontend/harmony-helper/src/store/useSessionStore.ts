@@ -1,0 +1,151 @@
+import { create } from 'zustand';
+import { AnalysisResponse, SessionData } from '@/types';
+import { storageService } from '@/services/storage';
+
+interface SessionState {
+    currentSession: SessionData | null;
+    isRecording: boolean;
+    isAnalyzing: boolean;
+
+    // History & Gamification
+    history: SessionData[];
+    streak: number;
+    totalMinutes: number;
+    weeklyProgress: { day: string; minutes: number }[];
+    isLoadingHistory: boolean;
+
+    // Actions
+    init: () => Promise<void>;
+    startNewSession: (xmlContent: string, songName: string, instrument: string) => void;
+    setRecordingBlob: (blob: Blob) => void;
+    setAnalysisResults: (results: AnalysisResponse) => void;
+    clearSession: () => void;
+    saveSession: () => Promise<void>;
+    deleteSession: (id: string) => Promise<void>;
+    refreshStats: () => Promise<void>;
+
+    setRecordingStatus: (isRecording: boolean) => void;
+    setAnalyzingStatus: (isAnalyzing: boolean) => void;
+    setInstrument: (instrument: string) => void;
+    setSessionDurations: (recordingSeconds: number, totalSeconds: number) => void;
+}
+
+export const useSessionStore = create<SessionState>((set, get) => ({
+    currentSession: null,
+    isRecording: false,
+    isAnalyzing: false,
+    history: [],
+    streak: 0,
+    totalMinutes: 0,
+    weeklyProgress: [],
+    isLoadingHistory: false,
+
+    init: async () => {
+        set({ isLoadingHistory: true });
+        try {
+            const [history, stats] = await Promise.all([
+                storageService.getSessions(),
+                storageService.getUserStats()
+            ]);
+            set({
+                history,
+                streak: stats.streak,
+                totalMinutes: stats.total_minutes,
+                weeklyProgress: stats.weekly_progress,
+                isLoadingHistory: false
+            });
+        } catch (error) {
+            console.error("Failed to load session history:", error);
+            set({ isLoadingHistory: false });
+        }
+    },
+
+    refreshStats: async () => {
+        const stats = await storageService.getUserStats();
+        set({
+            streak: stats.streak,
+            totalMinutes: stats.total_minutes,
+            weeklyProgress: stats.weekly_progress
+        });
+    },
+
+    startNewSession: (xmlContent, songName, instrument) => set({
+        currentSession: {
+            id: crypto.randomUUID(),
+            date: new Date().toISOString(),
+            songName,
+            instrument,
+            durationSeconds: 0,
+            xmlContent,
+        },
+        isRecording: false,
+        isAnalyzing: false,
+    }),
+
+    setRecordingBlob: (blob) => set((state) => ({
+        currentSession: state.currentSession ? { ...state.currentSession, audioBlob: blob } : null
+    })),
+
+    setAnalysisResults: (results) => set((state) => ({
+        currentSession: state.currentSession ? { ...state.currentSession, analysis: results } : null
+    })),
+
+    clearSession: () => set({ currentSession: null, isRecording: false, isAnalyzing: false }),
+
+    saveSession: async () => {
+        const { currentSession, history } = get();
+        if (!currentSession) return;
+
+        // Keep local ref for identification
+        const sessionId = currentSession.id;
+
+        // Optimistic update
+        const newHistory = [currentSession, ...history];
+        set({ history: newHistory, currentSession: null });
+
+        try {
+            const audioUrl = await storageService.saveSession(currentSession);
+
+            // Update the optimistic session with its permanent URL
+            if (audioUrl) {
+                set((state) => ({
+                    history: state.history.map(s => s.id === sessionId ? { ...s, audioUrl } : s)
+                }));
+            }
+
+            await get().refreshStats();
+        } catch (error) {
+            console.error("Failed to save session:", error);
+            // Rollback optimistic update
+            set({ history });
+        }
+    },
+
+    deleteSession: async (id) => {
+        const { history } = get();
+        // Optimistic update
+        set({ history: history.filter(s => s.id !== id) });
+
+        try {
+            await storageService.deleteSession(id);
+        } catch (error) {
+            console.error("Failed to delete session:", error);
+            // Rollback?
+            set({ history });
+        }
+    },
+
+    setRecordingStatus: (isRecording) => set({ isRecording }),
+    setAnalyzingStatus: (isAnalyzing) => set({ isAnalyzing }),
+    setInstrument: (instrument) => set((state) => ({
+        currentSession: state.currentSession ? { ...state.currentSession, instrument } : null
+    })),
+
+    setSessionDurations: (recordingSeconds, totalSeconds) => set((state) => ({
+        currentSession: state.currentSession ? {
+            ...state.currentSession,
+            durationSeconds: recordingSeconds,
+            totalPracticeSeconds: totalSeconds
+        } : null
+    })),
+}));

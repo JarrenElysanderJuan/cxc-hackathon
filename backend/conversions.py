@@ -60,7 +60,16 @@ async def xml_to_wave(xml_content, bpm, starting_measure, audio_length, instrume
         new_pm.instruments.append(target_inst)
         
         # generate
-        audio_data = new_pm.fluidsynth(fs=sr, sf2_path=sf2_path)
+        try:
+            audio_data = new_pm.fluidsynth(fs=sr, sf2_path=sf2_path)
+        except ImportError as ie:
+            print(f"⚠️  FluidSynth Error: {ie}")
+            print("Please ensure you have FluidSynth installed on your system and added to your PATH.")
+            # Fallback: Generate silence if synthesis fails, so the app doesn't crash
+            audio_data = np.zeros(int(audio_length * sr))
+        except Exception as e:
+            print(f"⚠️  Synthesis Error: {e}")
+            audio_data = np.zeros(int(audio_length * sr))
         
         # trim
         target_samples = int(audio_length * sr)

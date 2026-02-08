@@ -1,98 +1,335 @@
-import base64
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-
-from conversions import c4_to_wave, xml_to_librosa
-from analyze import analyze_audio
+from typing import List, Optional
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from supabase import create_client, Client
+import base64
+import io
+from pydub import AudioSegment
 from reportandscript import generate_texts
 from xml_mark_up import mark_up_xml
+from conversions import xml_to_wave
+from analyze import analyze_audio
 
-app = FastAPI()
+load_dotenv()
 
-INSTRUMENT_MAP = {
-    "piano": 0,        
-    "violin": 40,     
-    "viola": 41,       
-    "cello": 42,         
-    "contrabass": 43,    
-    "trumpet": 56,       
-    "trombone": 57,      
-    "tuba": 58,         
-    "french horn": 60,  
-    "saxophone": 65,   
-    "clarinet": 71,     
-    "flute": 73,        
-    "guitar": 24,      
-    "electric guitar": 27
-}
+app = FastAPI(title="Harmony Helper API")
 
-def get_midi_program(instrument_name):
-    key = instrument_name.lower().strip()
-    return INSTRUMENT_MAP.get(key, 0)
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, restrict this
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class AnalyzeRequest(BaseModel):
+# Supabase Client
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # Use service role for backend admin tasks
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("WARNING: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+# Helper to get user from token
+async def get_current_user_id(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        # For development/testing, return a mock ID if no token or if it's the mock-token
+        if authorization == "Bearer mock-token" or not authorization:
+            return os.getenv("MOCK_USER_ID", "mock_auth0_id")
+        return os.getenv("MOCK_USER_ID", "mock_auth0_id")
+    
+    try:
+        token = authorization.split(" ")[1]
+        import json
+        import base64
+        # Extract sub from JWT payload
+        _, payload, _ = token.split(".")
+        # Add padding if needed
+        padding = "=" * (4 - len(payload) % 4)
+        decoded = base64.b64decode(payload + padding).decode("utf-8")
+        data = json.loads(decoded)
+        return data.get("sub")
+    except Exception as e:
+        print(f"Token decode error: {e}")
+        return "mock_auth0_id"
+
+# Models
+class UserSync(BaseModel):
+    sub: str
+    email: str
+    name: str
+    picture: str
+
+class SessionBase(BaseModel):
+    song_name: str
+    instrument: str
+    duration_seconds: int
+    total_practice_seconds: Optional[int] = 0
+    date: str
+    xml_content: str
+    analysis: Optional[dict] = None
+    audioBase64: Optional[str] = None
+
+class AnalyzePayload(BaseModel):
     song_name: str = Field(alias="Song_name")
     instrument: str = Field(alias="Instrument")
     audio_length: float = Field(alias="Audio_length")
+    recording_b64: str = Field(alias="Recording")  # Base64 WebM from frontend
+    target_xml_str: str = Field(alias="Target_XML") 
     bpm: int = Field(alias="BPM")
     starting_measure: int = Field(alias="Starting_measure")
-    recording_b64: str = Field(alias="Recording")  
-    target_xml_str: str = Field(alias="Target_XML") 
 
-# returns a summary, a TTS script, a user spectrogram,
-# a target spectrogram and a marked up music XML file
-@app.post("/analyze")
-async def analyze_endpoint(payload: AnalyzeRequest):
+# Endpoints
+@app.get("/")
+async def root():
+    return {"message": "Harmony Helper API is running"}
+
+@app.post("/api/users/sync")
+async def sync_user(user: UserSync):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    data = {
+        "auth0_id": user.sub,
+        "email": user.email,
+        "name": user.name,
+        "picture": user.picture
+    }
+    
+    res = supabase.table("users").upsert(data, on_conflict="auth0_id").execute()
+    return {"status": "success", "data": res.data}
+
+@app.post("/api/analyze")
+async def analyze(payload: AnalyzePayload):
     try:
-        # reads the raw data
-        audio_raw = base64.b64decode(payload.recording_b64)
+        # 1. Decode WebM from Base64
+        header, encoded = payload.recording_b64.split(",", 1) if "," in payload.recording_b64 else ("", payload.recording_b64)
+        audio_raw = base64.b64decode(encoded)
+        
+        # 2. Convert WebM to Wav using pydub
+        # This acts as our "C4 to Wave" replacement for modern web audio
+        try:
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_raw))
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            user_wav = wav_io.getvalue()
+        except Exception as e:
+            print(f"⚠️ Audio conversion warning: {e}. Using raw data as fallback.")
+            user_wav = audio_raw
 
-        # converting raw C4 to wav
-        user_wav = await c4_to_wave(audio_raw)
-
-        # determine instrument ID
-        midi_program = get_midi_program(payload.instrument)
-
-        # converting Music XML to spectrogram
-        target_audio = await xml_to_wave(
-            payload.target_xml_str, 
-            payload.bpm, 
-            payload.starting_measure, 
+        # 3. Generate Target Audio from MusicXML (Partner Logic)
+        target_wav_buffer = await xml_to_wave(
+            payload.target_xml_str,
+            payload.bpm,
+            payload.starting_measure,
             payload.audio_length,
-            instrument_id=midi_program
+            instrument_id=0 # TODO: Map instrument names to MIDI programs
+        )
+        target_wav = target_wav_buffer.getvalue()
+
+        # 4. Perform Analysis (Partner Black Box)
+        analysis_results = await analyze_audio(
+            payload.song_name,
+            payload.instrument,
+            payload.audio_length,
+            user_wav,
+            target_wav
         )
 
-        # receives user_spectrogram, target_spectrogram and errors list
-        errors = await analyze_audio(
-            payload.song_name, 
-            payload.instrument, 
-            payload.audio_length, 
-            user_wav, 
-            target_audio
-        )
+        errors = analysis_results["errors"]
+        user_spec = analysis_results["user_spectrogram"]
+        target_spec = analysis_results["target_spectrogram"]
 
-        # receives summary and tts script
+        # 5. Generate Text Reports (Partner Logic)
         report, tts = await generate_texts(
-            payload.song_name, 
-            payload.instrument, 
-            payload.audio_length, 
+            payload.song_name,
+            payload.instrument,
+            payload.audio_length,
             errors
         )
-        
-        marked_up_xml = mark_up_xml(
-            xml_raw, 
-            errors, 
-            payload.bpm, 
+
+        # 6. Mark up XML (Partner Logic)
+        marked_xml = mark_up_xml(
+            payload.target_xml_str,
+            errors,
+            payload.bpm,
             payload.starting_measure
         )
 
         return {
-            "report": report,
-            "tts_script": tts,
-            "user_spectrogram": user_spectrogram.tolist(), 
-            "target_spectrogram": target_spectrogram.tolist(),
-            "marked_up_xml": marked_up_xml
+            "performace_summary": report,
+            "coach-feedback": tts,
+            "user-spectrogram": user_spec,
+            "target-spectrogram": target_spec,
+            "marked-up-musicxml": marked_xml
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        print(f"❌ Analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/sessions")
+async def save_session(session: SessionBase, auth0_id: str = Depends(get_current_user_id)):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    user_res = supabase.table("users").select("id, streak_count, last_practice_date").eq("auth0_id", auth0_id).execute()
+    if not user_res.data:
+        raise HTTPException(404, "User not found. Please sync first.")
+    
+    user_info = user_res.data[0]
+    user_id = user_info["id"]
+    
+    # Streak Logic
+    new_streak = user_info.get("streak_count", 0) or 0
+    last_date_str = user_info.get("last_practice_date")
+    today = datetime.now().date()
+    
+    if last_date_str:
+        try:
+            # Parse ISO date, handling potential whitespace/padding
+            last_date = datetime.fromisoformat(last_date_str.replace("Z", "+00:00")).date()
+            if last_date == today - timedelta(days=1):
+                new_streak += 1
+            elif last_date < today - timedelta(days=1):
+                new_streak = 1
+            # If they already practiced today, keep streak the same
+        except Exception:
+            new_streak = 1
+    else:
+        new_streak = 1
+
+    audio_url = None
+    if session.audioBase64:
+        try:
+            import base64
+            # Strip header if present
+            if "," in session.audioBase64:
+                _, encoded = session.audioBase64.split(",", 1)
+            else:
+                encoded = session.audioBase64
+                
+            audio_data = base64.b64decode(encoded)
+            filename = f"{user_id}/{datetime.now().timestamp()}.webm"
+            
+            # Actual upload to Supabase Storage
+            res = supabase.storage.from_("recordings").upload(
+                path=filename,
+                file=audio_data,
+                file_options={"content-type": "audio/webm"}
+            )
+            
+            # Use official method to get public URL
+            audio_url = supabase.storage.from_("recordings").get_public_url(filename)
+        except Exception as e:
+            print(f"Audio processing/upload failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    session_data = {
+        "user_id": user_id,
+        "song_name": session.song_name,
+        "instrument": session.instrument,
+        "duration_seconds": session.duration_seconds,
+        "total_practice_seconds": session.total_practice_seconds or session.duration_seconds,
+        "date": session.date,
+        "xml_content": session.xml_content,
+        "analysis_summary": session.analysis.get("performace_summary") if session.analysis else None,
+        "analysis_feedback": session.analysis.get("coach-feedback") if session.analysis else None,
+        "audio_url": audio_url
+    }
+    
+    try:
+        # Insert session
+        supabase.table("sessions").insert(session_data).execute()
+        
+        # Update user streak and last_practice_date
+        supabase.table("users").update({
+            "streak_count": new_streak,
+            "last_practice_date": datetime.now().isoformat()
+        }).eq("id", user_id).execute()
+    except Exception as e:
+        print(f"Database error details: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    return {"status": "success", "streak": new_streak, "audio_url": audio_url}
+
+@app.get("/api/sessions")
+async def get_sessions(auth0_id: str = Depends(get_current_user_id)):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    user_res = supabase.table("users").select("id").eq("auth0_id", auth0_id).execute()
+    if not user_res.data: return []
+    
+    user_id = user_res.data[0]["id"]
+    res = supabase.table("sessions").select("*").eq("user_id", user_id).order("date", desc=True).execute()
+    return res.data
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str, auth0_id: str = Depends(get_current_user_id)):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    user_res = supabase.table("users").select("id").eq("auth0_id", auth0_id).execute()
+    if not user_res.data: raise HTTPException(403)
+    
+    user_id = user_res.data[0]["id"]
+    supabase.table("sessions").delete().eq("id", session_id).eq("user_id", user_id).execute()
+    return {"status": "success"}
+
+@app.get("/api/stats")
+async def get_stats(auth0_id: str = Depends(get_current_user_id)):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    
+    user_res = supabase.table("users").select("id, streak_count").eq("auth0_id", auth0_id).execute()
+    if not user_res.data:
+        return {"weekly_progress": [], "streak": 0, "total_minutes": 0}
+    
+    user_id = user_res.data[0]["id"]
+    streak = user_res.data[0].get("streak_count", 0)
+    
+    # Total minutes
+    sessions_res = supabase.table("sessions").select("duration_seconds, total_practice_seconds").eq("user_id", user_id).execute()
+    total_seconds = sum(s.get("total_practice_seconds") or s.get("duration_seconds") or 0 for s in sessions_res.data)
+    total_minutes = total_seconds // 60
+    
+    # Weekly progress
+    from collections import defaultdict
+    daily_stats = defaultdict(int)
+    
+    # Get last 7 days of sessions
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    sessions_res = supabase.table("sessions") \
+        .select("date, duration_seconds, total_practice_seconds") \
+        .eq("user_id", user_id) \
+        .gte("date", seven_days_ago.isoformat()) \
+        .execute()
+    
+    for s in sessions_res.data:
+        try:
+            # Parse date and get day name
+            dt = datetime.fromisoformat(s["date"].replace("Z", "+00:00"))
+            day_name = dt.strftime("%a")
+            # Use total_practice_seconds if available, fallback to duration_seconds
+            practiced = s.get("total_practice_seconds") or s.get("duration_seconds") or 0
+            daily_stats[day_name] += practiced // 60
+        except Exception:
+            continue
+            
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    weekly_progress = [{"day": d, "minutes": daily_stats.get(d, 0)} for d in days]
+
+    return {
+        "weekly_progress": weekly_progress,
+        "streak": streak,
+        "total_minutes": total_minutes
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

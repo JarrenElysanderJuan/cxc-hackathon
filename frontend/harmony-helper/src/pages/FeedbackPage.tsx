@@ -1,40 +1,50 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, RotateCcw, BarChart3, Target, Gauge, Music2 } from "lucide-react";
+import { ArrowLeft, RotateCcw, BarChart3, Target, Music2, FileText, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MusicXMLRenderer from "@/components/MusicXMLRenderer";
 import AIAvatar from "@/components/AIAvatar";
-import {
-  DUMMY_MUSICXML,
-  DUMMY_ERRORS,
-  DUMMY_FEEDBACK_TEXT,
-} from "@/lib/dummyMusicXML";
+import { useSessionStore } from "@/store/useSessionStore";
+import { DUMMY_MUSICXML } from "@/lib/dummyMusicXML";
 
-/**
- * AI Feedback Page
- *
- * Displays the MusicXML sheet marked up with errors,
- * alongside an AI avatar that "speaks" the feedback.
- *
- * TODO: Replace dummy data with actual backend AI analysis results.
- * TODO: Integrate real audio analysis API for pitch/tempo detection.
- * TODO: Add interactive error navigation (click error → jump to note).
- */
 const FeedbackPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+  const { currentSession, saveSession } = useSessionStore();
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Get XML from navigation state, or fall back to dummy
-  const xmlContent =
-    (location.state as { xmlContent?: string })?.xmlContent || DUMMY_MUSICXML;
+  const analysis = currentSession?.analysis;
 
-  const feedback = DUMMY_FEEDBACK_TEXT;
-  const errors = DUMMY_ERRORS;
+  useEffect(() => {
+    if (!currentSession) {
+      // If no session, redirect to home or session
+      // navigate("/session");
+    }
+  }, [currentSession, navigate]);
 
-  const scoreColor = (score: number) => {
-    if (score >= 85) return "text-success-green";
-    if (score >= 60) return "text-primary";
-    return "text-destructive";
+  // Fallback to dummy if no analysis (for dev/preview)
+  const xmlContent = analysis?.["marked-up-musicxml"] || currentSession?.xmlContent || DUMMY_MUSICXML;
+  const summary = analysis?.["performace_summary"] || "No analysis available.";
+  const detailedFeedback = analysis?.["coach-feedback"] || "Practice more!";
+
+  // Spectrograms (Base64 or URL)
+  const userSpectrogram = analysis?.["user-spectrogram"];
+  const targetSpectrogram = analysis?.["target-spectrogram"];
+
+  const handleSaveAndNavigate = async (destination: "/" | "/session") => {
+    setIsSaving(true);
+    try {
+      await saveSession(); // Saves to history and clears current
+      navigate(destination);
+    } catch (error) {
+      console.error("Save failed:", error);
+      // Still navigate or show error? Let's show error then navigate anyway to not block user
+      navigate(destination);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -55,156 +65,126 @@ const FeedbackPage = () => {
             <Music2 className="h-5 w-5 text-primary" />
             <span className="font-semibold text-foreground">AI Feedback</span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/session")}
-            className="gap-2"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            New Session
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isSaving}
+              onClick={() => handleSaveAndNavigate("/")}
+              className="gap-2"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {isSaving ? "Saving..." : "Home"}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={isSaving}
+              onClick={() => handleSaveAndNavigate("/session")}
+              className="gap-2"
+            >
+              <Music2 className="h-3.5 w-3.5" />
+              {isSaving ? "Saving..." : "New Session"}
+            </Button>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-          {/* Left: Sheet music with error highlights (takes most space) */}
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          {/* Left Column */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-6"
           >
-            {/* Score summary cards */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                {
-                  label: "Overall",
-                  value: feedback.overallScore,
-                  icon: BarChart3,
-                },
-                {
-                  label: "Pitch",
-                  value: feedback.pitchAccuracy,
-                  icon: Target,
-                },
-                {
-                  label: "Tempo",
-                  value: feedback.tempoConsistency,
-                  icon: Gauge,
-                },
-                {
-                  label: "Dynamics",
-                  value: feedback.dynamics,
-                  icon: Music2,
-                },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-lg bg-gradient-card border border-border p-4 text-center"
-                >
-                  <stat.icon className="mx-auto mb-1.5 h-4 w-4 text-muted-foreground" />
-                  <p
-                    className={`text-2xl font-bold tabular-nums ${scoreColor(stat.value)}`}
-                  >
-                    {stat.value}%
-                  </p>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
+            {/* Central Content with Tabs (Sheet vs Summary) */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[500px] flex flex-col">
+              <Tabs defaultValue="sheet" className="w-full flex-1 flex flex-col">
+                <div className="border-b border-border bg-muted/30 px-4 py-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Performance Review</h3>
+                  <TabsList className="grid w-[240px] grid-cols-2">
+                    <TabsTrigger value="sheet" className="gap-2">
+                      <Music className="h-3.5 w-3.5" /> Sheet Music
+                    </TabsTrigger>
+                    <TabsTrigger value="summary" className="gap-2">
+                      <FileText className="h-3.5 w-3.5" /> Summary
+                    </TabsTrigger>
+                  </TabsList>
                 </div>
-              ))}
-            </div>
 
-            {/* Marked-up sheet */}
-            <div className="rounded-lg border border-border bg-card p-4 overflow-auto">
-              <MusicXMLRenderer
-                xmlContent={xmlContent}
-                bpm={120}
-                isPlaying={false}
-                errors={errors}
-                className="min-h-[400px]"
-              />
-            </div>
-
-            {/* Error legend */}
-            <div className="flex flex-wrap items-center gap-4 rounded-lg bg-secondary/50 px-4 py-3">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Error Legend:
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-full bg-destructive" />
-                <span className="text-xs text-muted-foreground">
-                  Major (pitch)
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-full bg-primary" />
-                <span className="text-xs text-muted-foreground">
-                  Moderate (pitch)
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-full bg-accent" />
-                <span className="text-xs text-muted-foreground">
-                  Minor (timing/dynamics)
-                </span>
-              </div>
-            </div>
-
-            {/* Textual feedback */}
-            <div className="rounded-lg bg-gradient-card border border-border p-5">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">
-                Detailed Notes
-              </h3>
-              <ul className="space-y-2">
-                {errors.map((err, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    <span
-                      className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                        err.severity === "major"
-                          ? "bg-destructive"
-                          : err.severity === "moderate"
-                          ? "bg-primary"
-                          : "bg-accent"
-                      }`}
+                <div className="flex-1 p-4 bg-card">
+                  <TabsContent value="sheet" className="mt-0 h-full">
+                    <MusicXMLRenderer
+                      xmlContent={xmlContent}
+                      bpm={120}
+                      isPlaying={false}
+                      errors={[]}
+                      className="min-h-[400px]"
                     />
-                    <span className="text-muted-foreground">
-                      <strong className="text-foreground">
-                        Measure {err.measure}, Note {err.noteIndex + 1}:
-                      </strong>{" "}
-                      {err.description}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                  </TabsContent>
+
+                  <TabsContent value="summary" className="mt-0 h-full">
+                    <div className="prose prose-invert max-w-none">
+                      <h3 className="text-xl font-semibold mb-4 text-primary">Performance Summary</h3>
+                      <div className="text-lg leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                        <ReactMarkdown>{summary}</ReactMarkdown>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </div>
+              </Tabs>
             </div>
 
-            {/* Practice tips */}
-            <div className="rounded-lg bg-gradient-card border border-border p-5">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">
-                Practice Tips
-              </h3>
-              <ol className="space-y-2 list-decimal list-inside">
-                {feedback.tips.map((tip, i) => (
-                  <li
-                    key={i}
-                    className="text-sm text-muted-foreground leading-relaxed"
-                  >
-                    {tip}
-                  </li>
-                ))}
-              </ol>
-            </div>
+            {/* Spectrogram Comparison */}
+            {(userSpectrogram || targetSpectrogram) && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {targetSpectrogram && (
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <Target className="h-4 w-4" /> Target Spectrogram
+                    </h3>
+                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
+                      {targetSpectrogram.startsWith("data:") || targetSpectrogram.startsWith("http") ? (
+                        <img src={targetSpectrogram} alt="Target Spectrogram" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                          {targetSpectrogram}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {userSpectrogram && (
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" /> Your Spectrogram
+                    </h3>
+                    <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-black/20">
+                      {userSpectrogram.startsWith("data:") || userSpectrogram.startsWith("http") ? (
+                        <img src={userSpectrogram} alt="User Spectrogram" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                          {userSpectrogram}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
 
-          {/* Right sidebar: AI Avatar (does not block the sheet) */}
+          {/* Right Sidebar: AI Avatar */}
           <motion.aside
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:sticky lg:top-20 lg:self-start"
+            className="lg:sticky lg:top-24 h-[calc(100vh-8rem)] flex flex-col justify-center"
           >
-            <div className="rounded-xl bg-gradient-card border border-border p-5">
-              <AIAvatar feedbackText={feedback.summary} autoSpeak={true} />
+            <div className="flex-1 flex flex-col items-center justify-center relative">
+              {/* Avatar speaks the 'coach-feedback' (detailed/short actionable) */}
+              <AIAvatar feedbackText={detailedFeedback} autoSpeak={true} />
             </div>
           </motion.aside>
         </div>

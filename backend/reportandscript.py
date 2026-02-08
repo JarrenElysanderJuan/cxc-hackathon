@@ -33,16 +33,19 @@ def format_context(song_name, instrument, audio_length, errors):
 
 async def generate_summary(context):
     prompt = f"""
-    Analyze the music performance based on the data below. Write a report to the musician (call them "you").
-    Return ONLY the report content. Do not add "Here is the summary".
+    Analyze the music performance based on the data below and write a review addressed to the musician (use "you").
+    Return ONLY the review content in MARKDOWN format. Do not include meta-comments.
 
-    STRICT FORMAT:
-    [2-3 introductory sentences summarizing the overall performance quality and the instrument played]
+    Guidelines:
+    1. Start with 2-3 sentences summarizing overall performance, strengths, and instrument played.
+    2. For each distinct error type, create a section with:
+    - A bolded error type
+    - Description of where and why it occurred
+    - A bulleted list of actionable improvement steps
+    3. However don't feel the need to cover every single error if there are many. Focus on the most impactful ones to avoid overwhelming the student.
+    4. Keep the tone supportive, encouraging, and professional.
 
-    [(all caps) ERROR TYPE]: [Detailed description of where and why this error occurred]
-    (Repeat for as many distinct error types as found in the data)
-
-    Data:
+    Performance Data:
     {context}
     """
     
@@ -55,15 +58,18 @@ async def generate_summary(context):
 
 async def generate_coach_script(context, instrument):
     prompt = f"""
-    You are a music coach. Write a short script for a text-to-speech engine to read to the student.
-    Output ONLY the raw spoken text. Do not include "Here is a script" or quotes.
+    You are a warm, encouraging music coach speaking directly to a student. 
+    Write a short, friendly script for a text-to-speech engine to read aloud. 
+    Output ONLY the spoken text, without quotes or any meta-commentary.
 
-    Requirements:
-    1. Tone: Positive and encouraging, but technically grounded.
-    2. Content: Briefly mention the errors found in the data, but focus on SPECIFIC technical advice for the {instrument} (e.g., if Guitar, mention fretting/strumming; if Piano, mention posture/fingering).
-    3. Length: 3-4 sentences max.
+    Guidelines:
+    1. Tone: Supportive, upbeat, and motivating, but still provide precise, practical advice.
+    2. Content: Gently mention the errors from the data, then focus on actionable tips tailored to the {instrument} (e.g., for Guitar: fretting, strumming; for Piano: fingering, posture).
+    3. Length: Keep it concise—5 to 6 sentences maximum.
+    4. Highlight 2-3 key improvement tips that the student can focus on in their next practice session. Bring up specific examples from their playing to make it feel personalized and relevant.
+    4. Style: Imagine you are speaking directly to the student, helping them improve without discouraging them.
 
-    Data:
+    Observed performance:
     {context}
     """
     

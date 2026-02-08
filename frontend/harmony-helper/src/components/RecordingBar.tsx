@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Square, Pause, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface RecordingBarProps {
   isRecording: boolean;
   isPaused: boolean;
   onStart: () => void;
-  onStop: () => void;
+  onStop: (seconds: number) => void;
   onPause: () => void;
   onResume: () => void;
   bpm: number;
@@ -17,6 +19,10 @@ interface RecordingBarProps {
   hasFinished: boolean;
   onRerecord: () => void;
   onGetFeedback: () => void;
+  startMeasure: number;
+  onStartMeasureChange: (measure: number) => void;
+  isMetronomeOn: boolean;
+  onMetronomeToggle: (checked: boolean) => void;
 }
 
 const RecordingBar = ({
@@ -32,6 +38,10 @@ const RecordingBar = ({
   hasFinished,
   onRerecord,
   onGetFeedback,
+  startMeasure,
+  onStartMeasureChange,
+  isMetronomeOn,
+  onMetronomeToggle,
 }: RecordingBarProps) => {
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
@@ -62,28 +72,62 @@ const RecordingBar = ({
       animate={{ y: 0, opacity: 1 }}
       className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-card/95 backdrop-blur-lg"
     >
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        {/* Left: BPM Control */}
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            BPM
-          </label>
-          <input
-            type="number"
-            value={bpm}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (val >= 20 && val <= 300) onBpmChange(val);
-            }}
-            min={20}
-            max={300}
-            className="w-16 rounded-md border border-border bg-secondary px-2 py-1.5 text-center font-mono text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            disabled={isRecording}
-          />
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 gap-4">
+        {/* Left Controls: Settings */}
+        <div className="flex items-center gap-6">
+          {/* BPM Control */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              BPM
+            </label>
+            <input
+              type="number"
+              value={bpm}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 10 && val <= 300) onBpmChange(val);
+              }}
+              min={10}
+              max={300}
+              className="w-16 rounded-md border border-border bg-secondary px-2 py-1.5 text-center font-mono text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              disabled={isRecording}
+            />
+          </div>
+
+          {/* Start Measure Control */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              Start Bar
+            </label>
+            <input
+              type="number"
+              value={startMeasure}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 1) onStartMeasureChange(val);
+              }}
+              min={1}
+              className="w-14 rounded-md border border-border bg-secondary px-2 py-1.5 text-center font-mono text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              disabled={isRecording}
+            />
+          </div>
+
+          {/* Metronome Toggle */}
+          <div className="flex items-center gap-2">
+            <Switch
+              id="metronome"
+              checked={isMetronomeOn}
+              onCheckedChange={onMetronomeToggle}
+              disabled={isRecording}
+            />
+            <Label htmlFor="metronome" className="text-xs font-medium uppercase tracking-wider text-muted-foreground cursor-pointer">
+              Click
+            </Label>
+          </div>
         </div>
 
         {/* Center: Recording Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 absolute left-1/2 -translate-x-1/2">
           <AnimatePresence mode="wait">
             {hasFinished && !isRecording ? (
               /* Post-recording actions */
@@ -123,9 +167,9 @@ const RecordingBar = ({
                   size="lg"
                   onClick={onStart}
                   disabled={disabled}
-                  className="h-12 w-12 rounded-full glow-amber p-0 disabled:opacity-40"
+                  className="h-14 w-14 rounded-full glow-amber p-0 disabled:opacity-40"
                 >
-                  <Mic className="h-5 w-5" />
+                  <Mic className="h-6 w-6" />
                 </Button>
               </motion.div>
             ) : (
@@ -156,10 +200,10 @@ const RecordingBar = ({
                   <Button
                     variant="destructive"
                     size="icon"
-                    onClick={onStop}
-                    className="h-12 w-12 rounded-full glow-recording"
+                    onClick={() => onStop(elapsed)}
+                    className="h-14 w-14 rounded-full glow-recording"
                   >
-                    <Square className="h-5 w-5" />
+                    <Square className="h-6 w-6" />
                   </Button>
                 </motion.div>
               </motion.div>
