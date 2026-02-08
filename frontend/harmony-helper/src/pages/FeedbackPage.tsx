@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, RotateCcw, BarChart3, Target, Music2, FileText, Music } from "lucide-react";
@@ -12,6 +13,7 @@ import { DUMMY_MUSICXML } from "@/lib/dummyMusicXML";
 const FeedbackPage = () => {
   const navigate = useNavigate();
   const { currentSession, saveSession } = useSessionStore();
+  const [isSaving, setIsSaving] = useState(false);
 
   const analysis = currentSession?.analysis;
 
@@ -31,9 +33,18 @@ const FeedbackPage = () => {
   const userSpectrogram = analysis?.["user-spectrogram"];
   const targetSpectrogram = analysis?.["target-spectrogram"];
 
-  const handleNewSession = async () => {
-    await saveSession(); // Saves to history and clears current
-    navigate("/session");
+  const handleSaveAndNavigate = async (destination: "/" | "/session") => {
+    setIsSaving(true);
+    try {
+      await saveSession(); // Saves to history and clears current
+      navigate(destination);
+    } catch (error) {
+      console.error("Save failed:", error);
+      // Still navigate or show error? Let's show error then navigate anyway to not block user
+      navigate(destination);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -54,15 +65,28 @@ const FeedbackPage = () => {
             <Music2 className="h-5 w-5 text-primary" />
             <span className="font-semibold text-foreground">AI Feedback</span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNewSession}
-            className="gap-2"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            New Session / Save
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isSaving}
+              onClick={() => handleSaveAndNavigate("/")}
+              className="gap-2"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {isSaving ? "Saving..." : "Home"}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={isSaving}
+              onClick={() => handleSaveAndNavigate("/session")}
+              className="gap-2"
+            >
+              <Music2 className="h-3.5 w-3.5" />
+              {isSaving ? "Saving..." : "New Session"}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -103,9 +127,9 @@ const FeedbackPage = () => {
                   <TabsContent value="summary" className="mt-0 h-full">
                     <div className="prose prose-invert max-w-none">
                       <h3 className="text-xl font-semibold mb-4 text-primary">Performance Summary</h3>
-                      <p className="text-lg leading-relaxed text-foreground/90 whitespace-pre-wrap">
-                        {summary}
-                      </p>
+                      <div className="text-lg leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                        <ReactMarkdown>{summary}</ReactMarkdown>
+                      </div>
                     </div>
                   </TabsContent>
                 </div>

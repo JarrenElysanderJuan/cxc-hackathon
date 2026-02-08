@@ -1,5 +1,6 @@
 
 import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
 import { ArrowLeft, Calendar, Clock, Music, Play, FileText, Download, Trash2, StopCircle, History as HistoryIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -225,15 +226,15 @@ const HistoryPage = () => {
                     <div className="space-y-6 mt-4">
                         <section>
                             <h4 className="text-lg font-semibold text-primary mb-2">Performance Summary</h4>
-                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200">
-                                {selectedSessionForFeedback?.analysis?.performace_summary}
+                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200 prose prose-invert prose-sm max-w-none">
+                                <ReactMarkdown>{selectedSessionForFeedback?.analysis?.performace_summary}</ReactMarkdown>
                             </div>
                         </section>
 
                         <section>
                             <h4 className="text-lg font-semibold text-amber-400 mb-2">Coach's Advice</h4>
-                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200">
-                                {selectedSessionForFeedback?.analysis?.["coach-feedback"]}
+                            <div className="p-4 rounded-lg bg-white/5 border border-white/5 text-slate-200 prose prose-invert prose-sm max-w-none">
+                                <ReactMarkdown>{selectedSessionForFeedback?.analysis?.["coach-feedback"]}</ReactMarkdown>
                             </div>
                         </section>
                     </div>

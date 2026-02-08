@@ -17,40 +17,58 @@ interface AIAvatarProps {
 const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
+  const [cachedAudio, setCachedAudio] = useState<{ text: string; url: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Split text into sentences for line-by-line display
+  // Split text into readable chunks (sentences or long sentence fragments)
   const sentences = useMemo(() => {
-    return feedbackText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [feedbackText];
+    const rawSentences = feedbackText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [feedbackText];
+    const chunks: string[] = [];
+    let currentChunk = "";
+
+    rawSentences.forEach(s => {
+      const trimmed = s.trim();
+
+      // If adding this sentence exceeds ~200 chars, push the current chunk and start a new one
+      if (currentChunk && (currentChunk.length + trimmed.length > 200)) {
+        chunks.push(currentChunk);
+        currentChunk = trimmed;
+      } else {
+        currentChunk = currentChunk ? `${currentChunk} ${trimmed}` : trimmed;
+      }
+    });
+
+    if (currentChunk) chunks.push(currentChunk);
+
+    return chunks.filter(c => c.length > 0);
   }, [feedbackText]);
+
+  // Combined character count for accurate synchronization
+  const totalProcessedChars = useMemo(() => {
+    return sentences.reduce((sum, s) => sum + s.length, 0);
+  }, [sentences]);
 
   // Fallback for Web Speech API
   const speakWebSpeech = () => {
     if (!("speechSynthesis" in window)) {
-      setCurrentSentenceIndex(0); // Show first line
+      setCurrentSentenceIndex(0);
       return;
     }
 
     window.speechSynthesis.cancel();
-
-    // We can't easily sync sentences with WebSpeech "boundary" events perfectly 
-    // without complex logic, so we will just speak the whole thing and 
-    // cycle sentences based on estimated time or just show all.
-    // simpler: iterate sentences one by one.
-
     let index = 0;
 
     const speakNext = () => {
       if (index >= sentences.length) {
         setIsSpeaking(false);
-        setCurrentSentenceIndex(-1); // Show nothing or all? Let's show nothing or keep last.
+        setCurrentSentenceIndex(-1);
         return;
       }
 
       setCurrentSentenceIndex(index);
       const utterance = new SpeechSynthesisUtterance(sentences[index]);
-      utterance.rate = 1;
+      utterance.rate = 1.1; // Slightly faster for responsiveness
 
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => {
@@ -75,34 +93,32 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
       setIsSpeaking(true);
       setCurrentSentenceIndex(0);
 
-      const audioUrl = await elevenLabsService.speakText(feedbackText);
+      let audioUrl = cachedAudio?.text === feedbackText ? cachedAudio.url : null;
+
+      if (!audioUrl) {
+        audioUrl = await elevenLabsService.speakText(feedbackText);
+        setCachedAudio({ text: feedbackText, url: audioUrl });
+      }
+
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
-
-      // Calculate approximate duration of each sentence relative to total length
-      // This is an estimation since we don't have word-level timestamps from simple MP3
-      const totalChars = feedbackText.length;
 
       const updateSentence = () => {
         if (!audio.paused && !audio.ended) {
           const progress = audio.currentTime / audio.duration;
-
-          // Find which sentence corresponds to this progress fraction
-          // Simple linear interpolation based on char count
           let charCount = 0;
           let foundIndex = 0;
           for (let i = 0; i < sentences.length; i++) {
             charCount += sentences[i].length;
-            if (progress <= (charCount / totalChars)) {
+            if (progress <= (charCount / totalProcessedChars)) {
               foundIndex = i;
               break;
             }
           }
-          // Ensure we handle the very end correctly
-          if (progress >= 0.99) foundIndex = sentences.length - 1;
+          // Force last index if near end or past total logic
+          if (progress >= 0.98) foundIndex = sentences.length - 1;
 
           setCurrentSentenceIndex(foundIndex);
-
           animationFrameRef.current = requestAnimationFrame(updateSentence);
         }
       };
@@ -113,7 +129,7 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
       };
       audio.onended = () => {
         setIsSpeaking(false);
-        setCurrentSentenceIndex(-1); // Or keep last? 
+        setCurrentSentenceIndex(-1);
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       };
       audio.onerror = () => {
@@ -131,7 +147,7 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
   const stopSpeaking = () => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current = null;
+      audioRef.current.currentTime = 0; // Reset for potential reuse
     }
     window.speechSynthesis.cancel();
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
@@ -208,7 +224,7 @@ const AIAvatar = ({ feedbackText, autoSpeak = true }: AIAvatarProps) => {
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.2 } }}
-              className="text-2xl md:text-3xl font-light text-cyan-50 text-shadow-glow leading-snug drop-shadow-md"
+              className="text-xl md:text-2xl font-light text-cyan-50 text-shadow-glow leading-relaxed drop-shadow-md"
             >
               {sentences[currentSentenceIndex]}
             </motion.p>

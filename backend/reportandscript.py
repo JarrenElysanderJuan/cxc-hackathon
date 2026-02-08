@@ -33,14 +33,17 @@ def format_context(song_name, instrument, audio_length, errors):
 
 async def generate_summary(context):
     prompt = f"""
-    Analyze the music performance based on the data below. Write a performance review addressed directly to the musician (use "you"). 
-    Return ONLY the review content. Do not include phrases like "Here is the summary" or any meta-commentary.
+    Analyze the music performance based on the data below and write a review addressed to the musician (use "you").
+    Return ONLY the review content in MARKDOWN format. Do not include meta-comments.
 
     Guidelines:
-    1. Begin with 2-3 sentences summarizing the overall performance, commenting on strengths as well as areas to improve, and mention the instrument played.
-    2. For each distinct error type, describe where and why it happened, using a clear, friendly tone.
-    3. Include actionable improvement steps in bullet points under each error description.
-    4. Keep the tone supportive, encouraging, and professional, like a thoughtful music teacher giving feedback.
+    1. Start with 2-3 sentences summarizing overall performance, strengths, and instrument played.
+    2. For each distinct error type, create a section with:
+    - A bolded error type
+    - Description of where and why it occurred
+    - A bulleted list of actionable improvement steps
+    3. However don't feel the need to cover every single error if there are many. Focus on the most impactful ones to avoid overwhelming the student.
+    4. Keep the tone supportive, encouraging, and professional.
 
     Performance Data:
     {context}
