@@ -1,12 +1,13 @@
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
-import math
+import io
 
 def extract_features(file_path):
     # load the file
-    y = file_path
-    sr = 22050
+    y, sr = librosa.load(file_path, sr=22050)
+#     y = file_path
+#     sr = 22050
 #    y, sr = librosa.load(file_path)
 
     # find the fundamental frequencies
@@ -203,34 +204,56 @@ def find_errors(path_perfect, path_played):
                 errors.append(["note-early", time,
                                f"The note was played too early"])
     
-    adj_perf = np.ndarray(wp.shape[0])
-    adj_play = np.ndarray(wp.shape[0])
-    onset_adj_perf = np.ndarray(wp.shape[0])
-    onset_adj_play = np.ndarray(wp.shape[0])
-    times_adj = np.ndarray(wp.shape[0])
-    print(onsets_play_arr.shape)
-    for i in range(wp.shape[0]):
-        adj_perf[i] = f0_perf[wp[i, 0]]
-        adj_play[i] = f0_play[wp[i, 1]]        
-        onset_adj_perf[i] = onsets_perf_arr[wp[i, 0]]        
-        onset_adj_play[i] = onsets_play_arr[wp[i, 1]]        
+    return errors
 
-        times_adj[i] = times[wp[i, 0]]
-    
-    fig, ax = plt.subplots()
-    ax.plot(times_adj, adj_perf, label='f0', color='cyan', linewidth=1)
-#     ax.plot(_, f0_play, label='f0', color='cyan', linewidth=1)
-    ax.plot(times_adj, adj_play, label='f0', color='red', linewidth=1)
-    ax.plot(times_adj, onset_adj_perf, label='f0', color='cyan', linestyle='',
-            marker='+', markersize=10)
-    ax.plot(times_adj, onset_adj_play, label='f0', color='red', linestyle='',
-            marker='+', markersize=10)
-
-#     ax.plot(_, onsets_play_arr, label='f0', color='cyan', linestyle='',
+#     adj_perf = np.ndarray(wp.shape[0])
+#     adj_play = np.ndarray(wp.shape[0])
+#     onset_adj_perf = np.ndarray(wp.shape[0])
+#     onset_adj_play = np.ndarray(wp.shape[0])
+#     times_adj = np.ndarray(wp.shape[0])
+#     print(onsets_play_arr.shape)
+#     for i in range(wp.shape[0]):
+#         adj_perf[i] = f0_perf[wp[i, 0]]
+#         adj_play[i] = f0_play[wp[i, 1]]        
+#         onset_adj_perf[i] = onsets_perf_arr[wp[i, 0]]        
+#         onset_adj_play[i] = onsets_play_arr[wp[i, 1]]        
+# 
+#         times_adj[i] = times[wp[i, 0]]
+#     
+#     fig, ax = plt.subplots()
+#     ax.plot(times_adj, adj_perf, label='f0', color='cyan', linewidth=1)
+# #     ax.plot(_, f0_play, label='f0', color='cyan', linewidth=1)
+#     ax.plot(times_adj, adj_play, label='f0', color='red', linewidth=1)
+#     ax.plot(times_adj, onset_adj_perf, label='f0', color='cyan', linestyle='',
 #             marker='+', markersize=10)
-    plt.show()
+#     ax.plot(times_adj, onset_adj_play, label='f0', color='red', linestyle='',
+#             marker='+', markersize=10)
+# 
+# #     ax.plot(_, onsets_play_arr, label='f0', color='cyan', linestyle='',
+# #             marker='+', markersize=10)
+#     plt.show()
 
 # find_errors('ode_piano.wav', 'asdf.mp3')
 
 def analyze_audio(song_name, instrument, audio_length, user_wav, target_audio):
-    find_errors(user_wav, target_audio)
+    return find_errors(io.BytesIO(user_wav), io.BytesIO(target_audio))
+
+# import base64
+# from pydub import AudioSegment
+# 
+# with open('testbase64.txt', 'r') as file:
+#     encoded = file.read()
+#     audio_raw = base64.b64decode(encoded)
+#     
+#     # 2. Convert WebM to Wav using pydub
+#     # This acts as our "C4 to Wave" replacement for modern web audio
+#     try:
+#         audio_segment = AudioSegment.from_file(io.BytesIO(audio_raw))
+#         wav_io = io.BytesIO()
+#         audio_segment.export(wav_io, format="wav")
+#         user_wav = wav_io.getvalue()
+#     except Exception as e:
+#         print(f"⚠️ Audio conversion warning: {e}. Using raw data as fallback.")
+#         user_wav = audio_raw
+#     
+#     analyze_audio('a', 'a', 'a', user_wav, user_wav)
