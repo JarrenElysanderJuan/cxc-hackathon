@@ -5,7 +5,9 @@ import math
 
 def extract_features(file_path):
     # load the file
-    y, sr = librosa.load(file_path)
+    y = file_path
+    sr = 22050
+#    y, sr = librosa.load(file_path)
 
     # find the fundamental frequencies
     f0, voiced_flag, voiced_probs = librosa.pyin(y,
@@ -44,12 +46,19 @@ def extract_features(file_path):
                 pass
         
         f0_note[i] = note_hz
+        
+    def roll_onset_frames(f0, frame):
+        max = f0.shape[0] - 1
+        for i in reversed(range(6)):
+            if not np.isnan(f0[min(max, frame + i)]):
+                return f0[min(max, frame + i)]
+        
+        return np.nan
 
     # remove insignificant onsets
     onset_frames_lst = []
     for i in range(onset_frames.shape[0]):
-        if not (math.isnan(f0_note[onset_frames[i]])
-                and math.isnan(f0_note[onset_frames[min(i + 4, onset_frames.shape[0] - 1)]])):
+        if not np.isnan(roll_onset_frames(f0_note, onset_frames[i])):
             onset_frames_lst.append(onset_frames[i])
 
     clean_onset_frames = np.asarray(onset_frames_lst)
@@ -61,8 +70,9 @@ def extract_features(file_path):
 #        time = times[frame]
         note = f0_note[frame]
         try:
-            if not math.isnan(f0_note[frame + 4]):
-                note = f0_note[frame + 4]
+            temp_note = roll_onset_frames(f0_note, frame)
+            if not np.isnan(temp_note):
+                note = temp_note
         except:
             pass
         onset_pitches[i, 0] = frame
@@ -87,29 +97,25 @@ def extract_features(file_path):
         ax.set_ylim(librosa.note_to_hz('C1'), librosa.note_to_hz('C7'))
         plt.show()
     
-    #plot_graph()
+    plot_graph()
     
     return f0_note, onset_pitches, times
-
-def find_matching_index(wp, frame):
-    for i in range(wp.shape[0]):
-        if wp[i, 0] == frame:
-            return wp[i, 1]
 
 def find_errors(path_perfect, path_played):
     f0_perf, onsets_perf, times = extract_features(path_perfect)
     f0_play, onsets_play, _ = extract_features(path_played)
-    
     onsets_perf_arr = np.full(f0_perf.shape, np.nan)
     onsets_play_arr = np.full(f0_play.shape, np.nan)
     onsets_perf_arr[onsets_perf[:, 0].astype(np.int64)] = onsets_perf[:, 1]
     onsets_play_arr[onsets_play[:, 0].astype(np.int64)] = onsets_play[:, 1]
+        
 
     for i in range(f0_play.shape[0]):
         if not np.isnan(f0_play[i]):
             index = max(0, i)
-            f0_play = f0_play[index:f0_play.shape[0]]
-            onsets_play_arr = onsets_play_arr[index:f0_play.shape[0]]
+            shape = f0_play.shape[0]
+            f0_play = f0_play[index:shape]
+            onsets_play_arr = onsets_play_arr[index:shape]
             break
 
     for i in reversed(range(f0_play.shape[0])):
@@ -120,38 +126,89 @@ def find_errors(path_perfect, path_played):
             break
     
     # Removes nan and converts to midi
-    f0_perf[np.isnan(f0_perf)] = 1
+#    f0_perf[np.isnan(f0_perf)] = 1
     f0_perf = librosa.hz_to_midi(f0_perf)
-    f0_play[np.isnan(f0_play)] = 1
+#    f0_play[np.isnan(f0_play)] = 1
     f0_play = librosa.hz_to_midi(f0_play)
-
-    D, wp = librosa.sequence.dtw(f0_perf[np.newaxis, :],
-                                   f0_play[np.newaxis, :],
-                                   subseq=False,
-                                   global_constraints=True,
-                                   weights_add=np.array([0, 100, 100]))
-    wp = np.flip(wp, 0)
     
-    total_diff = 0
+    X = f0_perf.copy()
+    Y = f0_play.copy()
+
+    def nan_helper(y):
+        return np.isnan(y), lambda z: z.nonzero()[0]
+    
+    X_nans, X_f = nan_helper(X)
+    X[X_nans] = np.interp(X_f(X_nans), X_f(~X_nans), X[~X_nans])
+    Y_nans, Y_f = nan_helper(Y)
+    Y[Y_nans] = np.interp(Y_f(Y_nans), Y_f(~Y_nans), Y[~Y_nans])
+
+    D, wp = librosa.sequence.dtw(X[np.newaxis, :],
+                                   Y[np.newaxis, :],
+                                   subseq=False,
+                                   global_constraints=False,
+                                   weights_add=np.array([0, -0.1, -0.1]),
+                                   weights_mul=np.array([1, 1, 1]))
+    wp = np.flip(wp, 0)
+
+    def find_matching_index(wp, frame):
+        for i in range(wp.shape[0]):
+            if wp[i, 0] == frame:
+                return wp[i, 1]
+    
+    def get_wp_index(wp, frame):
+        for i in range(wp.shape[0]):
+            if wp[i, 0] == frame:
+                return i
+
+    errors = []
+    diff = 0
     for frame, note in onsets_perf:
         play_frame = find_matching_index(wp, frame)
+        
+        wp_i = get_wp_index(wp, frame)
+        deviation = diff - (wp[wp_i, 0] - wp[wp_i, 1])
+        diff = wp[wp_i, 0] - wp[wp_i, 1]
 
         found_note = False
         note_frame = None
-        for i in range(max(0, play_frame - 5), min(play_frame + 5,
+        distance = 100
+        for i in range(max(0, play_frame - 5), min(play_frame + 6,
                                                     onsets_play_arr.shape[0] - 1)):
-            if not np.isnan(onsets_play_arr[i]):
+            if not np.isnan(onsets_play_arr[i]) and np.abs(i - play_frame) < distance:
                 found_note = True
                 note_frame = i
+                distance = np.abs(i - play_frame)
         
+        time = times[int(frame)]
         if not found_note:
-            print(f"Missed at {times[int(frame)]}")
+            print(f"Missed note at {time}")
+            errors.append(["missed-note", time, "A note that should have been played was not played."])
+        elif librosa.hz_to_note(onsets_play_arr[note_frame]) != librosa.hz_to_note(note):
+            if onsets_play_arr[note_frame] > note:
+                print(f"Pitch too high at {time}")
+                errors.append(["pitch-too-high", time,
+                               f"The pitch played is too high. The correct note was {librosa.hz_to_note(note)}, but {librosa.hz_to_note(onsets_play_arr[note_frame])} was played."])
+            else:
+                print(f"Pitch too low at {time}")
+                errors.append(["pitch-too-low", time,
+                               f"The pitch played is too low. The correct note was {librosa.hz_to_note(note)}, but {librosa.hz_to_note(onsets_play_arr[note_frame])} was played."])
+        
+        if found_note:
+            if deviation < -20:
+                print(f"Note was played too late at {time}")
+                errors.append(["note-late", time,
+                               f"The note was played too late"])
+            if deviation > 20:
+                print(f"Note was played too early at {time}")
+                errors.append(["note-early", time,
+                               f"The note was played too early"])
     
     adj_perf = np.ndarray(wp.shape[0])
     adj_play = np.ndarray(wp.shape[0])
     onset_adj_perf = np.ndarray(wp.shape[0])
     onset_adj_play = np.ndarray(wp.shape[0])
     times_adj = np.ndarray(wp.shape[0])
+    print(onsets_play_arr.shape)
     for i in range(wp.shape[0]):
         adj_perf[i] = f0_perf[wp[i, 0]]
         adj_play[i] = f0_play[wp[i, 1]]        
@@ -173,5 +230,7 @@ def find_errors(path_perfect, path_played):
 #             marker='+', markersize=10)
     plt.show()
 
-find_errors('ode_piano.wav', 'ode_miss.wav')
-# find_errors('ode_to_joy_perfect.wav')
+# find_errors('ode_piano.wav', 'asdf.mp3')
+
+def analyze_audio(song_name, instrument, audio_length, user_wav, target_audio):
+    find_errors(user_wav, target_audio)
