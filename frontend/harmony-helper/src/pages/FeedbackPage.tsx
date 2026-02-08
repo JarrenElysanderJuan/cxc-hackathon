@@ -156,32 +156,11 @@ const FeedbackPage = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:sticky lg:top-20 lg:self-start space-y-6"
+            className="lg:sticky lg:top-24 h-[calc(100vh-8rem)] flex flex-col justify-center"
           >
-            <div className="rounded-xl bg-gradient-card border border-border p-6 shadow-sm">
-              <h3 className="mb-4 text-center font-semibold text-muted-foreground uppercase tracking-widest text-xs">
-                AI Vocal Coach
-              </h3>
+            <div className="flex-1 flex flex-col items-center justify-center relative">
               {/* Avatar speaks the 'coach-feedback' (detailed/short actionable) */}
               <AIAvatar feedbackText={detailedFeedback} autoSpeak={true} />
-            </div>
-
-            {/* Stats Summary */}
-            <div className="rounded-xl border border-border bg-card/50 p-4">
-              <h4 className="mb-3 text-sm font-medium">Session Stats</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Time</span>
-                  <span className="font-mono">
-                    {Math.floor((currentSession?.durationSeconds || 0) / 60)}:
-                    {((currentSession?.durationSeconds || 0) % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Instrument</span>
-                  <span>{currentSession?.instrument || "Voice"}</span>
-                </div>
-              </div>
             </div>
           </motion.aside>
         </div>
