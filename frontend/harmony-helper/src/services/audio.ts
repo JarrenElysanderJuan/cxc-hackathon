@@ -7,7 +7,15 @@ export const audioService = {
             throw new Error("Audio recording not supported");
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                sampleRate: 44100,
+                echoCancellation: false,
+                autoGainControl: false,
+                noiseSuppression: false,
+                channelCount: 1
+            }
+        });
 
         // Use proper mime type
         const mimeType = MediaRecorder.isTypeSupported("audio/webm")
