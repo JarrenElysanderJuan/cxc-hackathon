@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, RotateCcw, BarChart3, Target, Gauge, Music2, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, RotateCcw, BarChart3, Target, Music2, FileText, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MusicXMLRenderer from "@/components/MusicXMLRenderer";
 import AIAvatar from "@/components/AIAvatar";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -22,7 +23,6 @@ const FeedbackPage = () => {
   }, [currentSession, navigate]);
 
   // Fallback to dummy if no analysis (for dev/preview)
-  // In production, we might want to force a redirect
   const xmlContent = analysis?.["marked-up-musicxml"] || currentSession?.xmlContent || DUMMY_MUSICXML;
   const summary = analysis?.["performace_summary"] || "No analysis available.";
   const detailedFeedback = analysis?.["coach-feedback"] || "Practice more!";
@@ -112,26 +112,42 @@ const FeedbackPage = () => {
               </div>
             )}
 
-            {/* Marked-up sheet */}
-            <div className="rounded-lg border border-border bg-card p-4 overflow-auto min-h-[400px]">
-              <h3 className="mb-4 text-lg font-semibold">Performance Analysis</h3>
-              <MusicXMLRenderer
-                xmlContent={xmlContent}
-                bpm={120}
-                isPlaying={false}
-                errors={[]} // TODO: Parse errors from marked-up XML if possible, or expect backend to markup visual elements directly
-                className="min-h-[400px]"
-              />
-            </div>
+            {/* Central Content with Tabs (Sheet vs Summary) */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[500px] flex flex-col">
+              <Tabs defaultValue="sheet" className="w-full flex-1 flex flex-col">
+                <div className="border-b border-border bg-muted/30 px-4 py-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Performance Review</h3>
+                  <TabsList className="grid w-[240px] grid-cols-2">
+                    <TabsTrigger value="sheet" className="gap-2">
+                      <Music className="h-3.5 w-3.5" /> Sheet Music
+                    </TabsTrigger>
+                    <TabsTrigger value="summary" className="gap-2">
+                      <FileText className="h-3.5 w-3.5" /> Summary
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
 
-            {/* Detailed Feedback Text */}
-            <div className="rounded-lg bg-gradient-card border border-border p-6">
-              <h3 className="mb-3 text-lg font-semibold text-foreground">
-                Coach's Detailed Notes
-              </h3>
-              <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                {detailedFeedback}
-              </p>
+                <div className="flex-1 p-4 bg-card">
+                  <TabsContent value="sheet" className="mt-0 h-full">
+                    <MusicXMLRenderer
+                      xmlContent={xmlContent}
+                      bpm={120}
+                      isPlaying={false}
+                      errors={[]}
+                      className="min-h-[400px]"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="summary" className="mt-0 h-full">
+                    <div className="prose prose-invert max-w-none">
+                      <h3 className="text-xl font-semibold mb-4 text-primary">Performance Summary</h3>
+                      <p className="text-lg leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                        {summary}
+                      </p>
+                    </div>
+                  </TabsContent>
+                </div>
+              </Tabs>
             </div>
           </motion.div>
 
@@ -146,10 +162,17 @@ const FeedbackPage = () => {
               <h3 className="mb-4 text-center font-semibold text-muted-foreground uppercase tracking-widest text-xs">
                 AI Vocal Coach
               </h3>
-              <AIAvatar feedbackText={summary} autoSpeak={true} />
+              {/* Avatar speaks the 'coach-feedback' (detailed/short actionable) */}
+              <AIAvatar feedbackText={detailedFeedback} autoSpeak={true} />
+
+              <div className="mt-4 p-4 rounded-lg bg-background/50 border border-border">
+                <p className="text-sm text-muted-foreground italic">
+                  "{detailedFeedback}"
+                </p>
+              </div>
             </div>
 
-            {/* Stats Summary (Mock) */}
+            {/* Stats Summary */}
             <div className="rounded-xl border border-border bg-card/50 p-4">
               <h4 className="mb-3 text-sm font-medium">Session Stats</h4>
               <div className="space-y-3">

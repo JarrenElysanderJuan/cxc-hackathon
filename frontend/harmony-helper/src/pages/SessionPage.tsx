@@ -10,7 +10,13 @@ import { useSessionStore } from "@/store/useSessionStore";
 import { audioService } from "@/services/audio";
 import { api } from "@/services/api";
 import { toast } from "sonner";
-import { AnalysisResponse } from "@/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -30,7 +36,8 @@ const SessionPage = () => {
     setAnalysisResults,
     setRecordingStatus,
     setAnalyzingStatus,
-    isAnalyzing
+    isAnalyzing,
+    setInstrument
   } = useSessionStore();
 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -39,17 +46,18 @@ const SessionPage = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
   const [bpm, setBpm] = useState(120);
+  const [selectedInstrument, setSelectedInstrument] = useState("Piano");
 
   const handleFileUpload = useCallback((file: File, xml: string) => {
     setUploadedFile(file);
     setXmlContent(xml);
     setHasFinished(false);
 
-    // Initialize session in store
-    startNewSession(xml, file.name.replace(/\.[^/.]+$/, ""), "Piano"); // Default instrument for now
+    // Initialize session in store with selected instrument
+    startNewSession(xml, file.name.replace(/\.[^/.]+$/, ""), selectedInstrument);
 
     console.log("MusicXML uploaded:", file.name);
-  }, [startNewSession]);
+  }, [startNewSession, selectedInstrument]);
 
   const handleClearFile = useCallback(() => {
     setUploadedFile(null);
@@ -129,7 +137,7 @@ const SessionPage = () => {
       const payload = {
         Song_name: currentSession.songName,
         Instrument: currentSession.instrument,
-        Audio_length: currentSession.durationSeconds || 0, // TODO: track actual duration
+        Audio_length: currentSession.durationSeconds || 0,
         Recording: audioBase64,
         Target_XML: currentSession.xmlContent
       };
@@ -185,21 +193,52 @@ const SessionPage = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-xl"
+              className="w-full max-w-xl space-y-8"
             >
-              <div className="mb-4 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                  1
-                </span>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Upload MusicXML Sheet
+              <div className="text-center space-y-2">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                  Setup Session
                 </h2>
+                <p className="text-muted-foreground">
+                  Select your instrument and upload a MusicXML file to begin.
+                </p>
               </div>
-              <FileUpload
-                onFileUpload={handleFileUpload}
-                uploadedFile={uploadedFile}
-                onClear={handleClearFile}
-              />
+
+              <div className="grid gap-6 p-6 border border-border rounded-xl bg-card/50 backdrop-blur-sm">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Select Instrument
+                    </label>
+                    <Select
+                      value={selectedInstrument}
+                      onValueChange={setSelectedInstrument}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select Instrument" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Piano">Piano</SelectItem>
+                        <SelectItem value="Voice">Voice</SelectItem>
+                        <SelectItem value="Guitar">Guitar</SelectItem>
+                        <SelectItem value="Violin">Violin</SelectItem>
+                        <SelectItem value="Flute">Flute</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Upload Sheet Music
+                    </label>
+                    <FileUpload
+                      onFileUpload={handleFileUpload}
+                      uploadedFile={uploadedFile}
+                      onClear={handleClearFile}
+                    />
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
         ) : (
@@ -210,12 +249,18 @@ const SessionPage = () => {
           >
             <div className="border-b border-border bg-card/50 px-4 py-2">
               <div className="mx-auto flex max-w-7xl items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Music className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium text-foreground">
-                    {uploadedFile?.name}
-                  </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Music className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-foreground">
+                      {uploadedFile?.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50 text-xs font-medium text-muted-foreground">
+                    <span>{currentSession?.instrument}</span>
+                  </div>
                 </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
