@@ -26,7 +26,8 @@ export interface SessionData {
     date: string;
     songName: string;
     instrument: string;
-    durationSeconds: number;
+    durationSeconds: number; // Recording duration
+    totalPracticeSeconds?: number; // Total time spent on session page
     audioBlob?: Blob;
     xmlContent: string;
     analysis?: AnalysisResponse;

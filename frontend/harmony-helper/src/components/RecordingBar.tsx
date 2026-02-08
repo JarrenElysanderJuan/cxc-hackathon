@@ -9,7 +9,7 @@ interface RecordingBarProps {
   isRecording: boolean;
   isPaused: boolean;
   onStart: () => void;
-  onStop: () => void;
+  onStop: (seconds: number) => void;
   onPause: () => void;
   onResume: () => void;
   bpm: number;
@@ -200,7 +200,7 @@ const RecordingBar = ({
                   <Button
                     variant="destructive"
                     size="icon"
-                    onClick={onStop}
+                    onClick={() => onStop(elapsed)}
                     className="h-14 w-14 rounded-full glow-recording"
                   >
                     <Square className="h-6 w-6" />

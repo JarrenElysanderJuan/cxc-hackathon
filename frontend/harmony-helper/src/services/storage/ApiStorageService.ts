@@ -35,6 +35,7 @@ export class ApiStorageService implements IStorageService {
             song_name: session.songName,
             instrument: session.instrument,
             duration_seconds: session.durationSeconds,
+            total_practice_seconds: session.totalPracticeSeconds || session.durationSeconds,
             date: session.date,
             xml_content: session.xmlContent,
             analysis: session.analysis,

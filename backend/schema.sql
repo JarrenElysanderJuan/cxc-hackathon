@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.sessions (
     analysis_summary TEXT,
     analysis_feedback TEXT,
     audio_url TEXT, -- URL to Supabase Storage
+    total_practice_seconds INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

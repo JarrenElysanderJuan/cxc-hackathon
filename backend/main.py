@@ -63,6 +63,7 @@ class SessionBase(BaseModel):
     song_name: str
     instrument: str
     duration_seconds: int
+    total_practice_seconds: Optional[int] = 0
     date: str
     xml_content: str
     analysis: Optional[dict] = None
@@ -159,6 +160,7 @@ async def save_session(session: SessionBase, auth0_id: str = Depends(get_current
         "song_name": session.song_name,
         "instrument": session.instrument,
         "duration_seconds": session.duration_seconds,
+        "total_practice_seconds": session.total_practice_seconds or session.duration_seconds,
         "date": session.date,
         "xml_content": session.xml_content,
         "analysis_summary": session.analysis.get("performace_summary") if session.analysis else None,
@@ -166,14 +168,18 @@ async def save_session(session: SessionBase, auth0_id: str = Depends(get_current
         "audio_url": audio_url
     }
     
-    # Insert session
-    supabase.table("sessions").insert(session_data).execute()
-    
-    # Update user streak and last_practice_date
-    supabase.table("users").update({
-        "streak_count": new_streak,
-        "last_practice_date": datetime.now().isoformat()
-    }).eq("id", user_id).execute()
+    try:
+        # Insert session
+        supabase.table("sessions").insert(session_data).execute()
+        
+        # Update user streak and last_practice_date
+        supabase.table("users").update({
+            "streak_count": new_streak,
+            "last_practice_date": datetime.now().isoformat()
+        }).eq("id", user_id).execute()
+    except Exception as e:
+        print(f"Database error details: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     return {"status": "success", "streak": new_streak}
 
@@ -211,8 +217,8 @@ async def get_stats(auth0_id: str = Depends(get_current_user_id)):
     streak = user_res.data[0].get("streak_count", 0)
     
     # Total minutes
-    sessions_res = supabase.table("sessions").select("duration_seconds").eq("user_id", user_id).execute()
-    total_seconds = sum(s["duration_seconds"] for s in sessions_res.data)
+    sessions_res = supabase.table("sessions").select("duration_seconds, total_practice_seconds").eq("user_id", user_id).execute()
+    total_seconds = sum(s.get("total_practice_seconds") or s.get("duration_seconds") or 0 for s in sessions_res.data)
     total_minutes = total_seconds // 60
     
     # Weekly progress
@@ -222,7 +228,7 @@ async def get_stats(auth0_id: str = Depends(get_current_user_id)):
     # Get last 7 days of sessions
     seven_days_ago = datetime.now() - timedelta(days=7)
     sessions_res = supabase.table("sessions") \
-        .select("date, duration_seconds") \
+        .select("date, duration_seconds, total_practice_seconds") \
         .eq("user_id", user_id) \
         .gte("date", seven_days_ago.isoformat()) \
         .execute()
@@ -232,7 +238,9 @@ async def get_stats(auth0_id: str = Depends(get_current_user_id)):
             # Parse date and get day name
             dt = datetime.fromisoformat(s["date"].replace("Z", "+00:00"))
             day_name = dt.strftime("%a")
-            daily_stats[day_name] += s["duration_seconds"] // 60
+            # Use total_practice_seconds if available, fallback to duration_seconds
+            practiced = s.get("total_practice_seconds") or s.get("duration_seconds") or 0
+            daily_stats[day_name] += practiced // 60
         except Exception:
             continue
             

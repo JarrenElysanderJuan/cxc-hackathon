@@ -27,6 +27,7 @@ interface SessionState {
     setRecordingStatus: (isRecording: boolean) => void;
     setAnalyzingStatus: (isAnalyzing: boolean) => void;
     setInstrument: (instrument: string) => void;
+    setSessionDurations: (recordingSeconds: number, totalSeconds: number) => void;
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -126,5 +127,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     setAnalyzingStatus: (isAnalyzing) => set({ isAnalyzing }),
     setInstrument: (instrument) => set((state) => ({
         currentSession: state.currentSession ? { ...state.currentSession, instrument } : null
+    })),
+
+    setSessionDurations: (recordingSeconds, totalSeconds) => set((state) => ({
+        currentSession: state.currentSession ? {
+            ...state.currentSession,
+            durationSeconds: recordingSeconds,
+            totalPracticeSeconds: totalSeconds
+        } : null
     })),
 }));

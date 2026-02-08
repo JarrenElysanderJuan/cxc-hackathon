@@ -38,7 +38,8 @@ const SessionPage = () => {
     setRecordingStatus,
     setAnalyzingStatus,
     isAnalyzing,
-    setInstrument
+    setInstrument,
+    setSessionDurations
   } = useSessionStore();
 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -51,6 +52,15 @@ const SessionPage = () => {
   const [isMetronomeOn, setIsMetronomeOn] = useState(false);
   const [isCountingIn, setIsCountingIn] = useState(false);
   const [selectedInstrument, setSelectedInstrument] = useState("Piano");
+  const [totalSeconds, setTotalSeconds] = useState(0);
+
+  // Total session timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTotalSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Sync BPM with Metronome
   useEffect(() => {
@@ -104,11 +114,14 @@ const SessionPage = () => {
     }
   }, [bpm, setRecordingStatus, isMetronomeOn]);
 
-  const handleStopRecording = useCallback(async () => {
+  const handleStopRecording = useCallback(async (recordingElapsed: number) => {
     try {
       metronomeService.stop(); // Stop metronome
       const blob = await audioService.stop();
       console.log("Recording stopped, blob size:", blob.size);
+
+      const { setSessionDurations } = useSessionStore.getState();
+      setSessionDurations(recordingElapsed, totalSeconds);
       setRecordingBlob(blob);
 
       setIsRecording(false);
@@ -119,7 +132,7 @@ const SessionPage = () => {
       console.error("Failed to stop recording:", error);
       toast.error("Failed to save recording.");
     }
-  }, [setRecordingBlob, setRecordingStatus]);
+  }, [setRecordingBlob, setRecordingStatus, totalSeconds]);
 
   const handlePause = useCallback(() => {
     audioService.pause();
@@ -138,7 +151,10 @@ const SessionPage = () => {
   const handlePlaybackEnd = useCallback(() => {
     console.log("Playback reached end of sheet");
     if (isRecording) {
-      handleStopRecording();
+      // We don't have the exact elapsed here easily, 
+      // but usually the RecordingBar will handle the stop.
+      // If we auto-stop, we might need to sync the timer.
+      handleStopRecording(0);
     }
   }, [isRecording, handleStopRecording]);
 
