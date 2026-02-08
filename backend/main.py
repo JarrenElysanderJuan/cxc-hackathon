@@ -118,6 +118,12 @@ async def get_sessions():
     res = supabase.table("sessions").select("*").order("date", desc=True).execute()
     return res.data
 
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    if not supabase: raise HTTPException(500, "Supabase not configured")
+    supabase.table("sessions").delete().eq("id", session_id).execute()
+    return {"status": "success"}
+
 @app.get("/api/stats")
 async def get_stats():
     # Mock stats for now
