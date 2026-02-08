@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Music, Mic, ArrowRight, Activity, Calendar } from "lucide-react";
+import { Music, Mic, ArrowRight, Activity, Calendar, Flame, Clock, History, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import heroBg from "@/assets/hero-bg.jpg";
 import { useAuth0 } from "@auth0/auth0-react";
@@ -9,10 +9,14 @@ import LogoutButton from "@/components/auth/LogoutButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UserStats } from "@/components/UserStats";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useSessionStore } from "@/store/useSessionStore";
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading } = useAuth0();
+  const { streak, history } = useSessionStore();
+
+  const recentSessions = history.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-gradient-studio flex flex-col">
@@ -61,10 +65,57 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* Placeholder for future sidebar/modules */}
-              <div className="rounded-xl border border-border bg-card/30 p-6 flex flex-col items-center justify-center min-h-[200px] text-muted-foreground border-dashed">
-                <Activity className="h-10 w-10 mb-3 opacity-20" />
-                <p>Recent Activity & Achievements coming soon...</p>
+              {/* Gamification & History Module */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Streak Card */}
+                <Card className="bg-card/30 backdrop-blur-sm border-white/10 col-span-1 flex flex-col justify-center items-center p-4">
+                  <div className="bg-orange-500/20 p-3 rounded-full mb-2 glow-amber-sm">
+                    <Flame className="h-8 w-8 text-orange-500" />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-2xl font-bold text-white block">{streak}</span>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Day Streak</span>
+                  </div>
+                </Card>
+
+                {/* Recent Sessions List */}
+                <Card className="bg-card/30 backdrop-blur-sm border-white/10 col-span-1 sm:col-span-2 relative overflow-hidden">
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <CardTitle className="text-base font-semibold flex items-center justify-between">
+                      <span>Recent Practice</span>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground hover:text-primary" onClick={() => navigate('/history')}>
+                        View All <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    {recentSessions.length > 0 ? (
+                      <div className="space-y-2">
+                        {recentSessions.map((session) => (
+                          <div key={session.id} className="flex items-center justify-between p-2 rounded-md bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group cursor-pointer" onClick={() => navigate('/history')}>
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                <Music className="h-4 w-4" />
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-medium truncate text-white">{session.songName || "Untitled"}</span>
+                                <span className="text-xs text-muted-foreground truncate">{session.instrument} • {new Date(session.date).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
+                              <Play className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-6 text-muted-foreground/50">
+                        <History className="h-8 w-8 mb-2 opacity-20" />
+                        <span className="text-xs">No sessions yet</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </div>
 

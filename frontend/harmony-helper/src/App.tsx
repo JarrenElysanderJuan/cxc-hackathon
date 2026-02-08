@@ -7,6 +7,7 @@ import { Auth0ProviderWithNavigate } from "./components/auth/Auth0ProviderWithNa
 import HomePage from "./pages/HomePage";
 import SessionPage from "./pages/SessionPage";
 import FeedbackPage from "./pages/FeedbackPage";
+import HistoryPage from "./pages/HistoryPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
             <Route path="/" element={<HomePage />} />
             <Route path="/session" element={<SessionPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
+            <Route path="/history" element={<HistoryPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

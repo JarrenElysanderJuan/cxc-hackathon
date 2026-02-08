@@ -11,7 +11,7 @@ import { DUMMY_MUSICXML } from "@/lib/dummyMusicXML";
 
 const FeedbackPage = () => {
   const navigate = useNavigate();
-  const { currentSession, clearSession } = useSessionStore();
+  const { currentSession, saveSession } = useSessionStore();
 
   const analysis = currentSession?.analysis;
 
@@ -31,8 +31,8 @@ const FeedbackPage = () => {
   const userSpectrogram = analysis?.["user-spectrogram"];
   const targetSpectrogram = analysis?.["target-spectrogram"];
 
-  const handleNewSession = () => {
-    clearSession();
+  const handleNewSession = async () => {
+    await saveSession(); // Saves to history and clears current
     navigate("/session");
   };
 
@@ -61,7 +61,7 @@ const FeedbackPage = () => {
             className="gap-2"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            New Session
+            New Session / Save
           </Button>
         </div>
       </header>
