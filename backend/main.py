@@ -133,7 +133,7 @@ async def analyze(payload: AnalyzePayload):
         target_wav = target_wav_buffer.getvalue()
 
         # 4. Perform Analysis (Partner Black Box)
-        analysis_results = await analyze_audio(
+        analysis_results = analyze_audio(
             payload.song_name,
             payload.instrument,
             payload.audio_length,

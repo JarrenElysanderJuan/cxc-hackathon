@@ -98,7 +98,7 @@ def extract_features(file_path):
         ax.set_ylim(librosa.note_to_hz('C1'), librosa.note_to_hz('C7'))
         plt.show()
     
-    plot_graph()
+    #plot_graph()
     
     return f0_note, onset_pitches, times
 
@@ -204,7 +204,12 @@ def find_errors(path_perfect, path_played):
                 errors.append(["note-early", time,
                                f"The note was played too early"])
     
-    return errors
+    errors_dict = {
+        "errors": errors,
+        "user_spectrogram": "asdf",
+        "target_spectrogram": "asdf"
+    }
+    return errors_dict
 
 #     adj_perf = np.ndarray(wp.shape[0])
 #     adj_play = np.ndarray(wp.shape[0])
